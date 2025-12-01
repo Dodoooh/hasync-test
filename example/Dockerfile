@@ -5,16 +5,28 @@ FROM $BUILD_FROM
 # Build arguments from build.yaml
 ARG NODE_VERSION
 
-# Install Node.js, npm, and build dependencies
+# Install build dependencies
 RUN apk add --no-cache \
-    nodejs \
-    npm \
     python3 \
     make \
     g++ \
     sqlite \
     curl \
+    bash \
+    xz \
     && rm -rf /var/cache/apk/*
+
+# Install Node.js 18.x (required for Vite and modern packages)
+ARG NODE_VERSION=18.20.5
+RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" -o /tmp/node.tar.xz \
+    && mkdir -p /usr/local/lib/nodejs \
+    && tar -xJf /tmp/node.tar.xz -C /usr/local/lib/nodejs \
+    && rm /tmp/node.tar.xz \
+    && ln -s "/usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-x64/bin/node" /usr/local/bin/node \
+    && ln -s "/usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-x64/bin/npm" /usr/local/bin/npm \
+    && ln -s "/usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-x64/bin/npx" /usr/local/bin/npx \
+    && node --version \
+    && npm --version
 
 # Execute during the build of the image
 ARG TEMPIO_VERSION BUILD_ARCH

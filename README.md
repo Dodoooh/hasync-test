@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-🔄 **UPDATE TEST v1.0.8** - Complete HAsync app build (no ingress)
+🔄 **UPDATE TEST v1.0.9** - Fixed Node.js 18+ requirement
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
