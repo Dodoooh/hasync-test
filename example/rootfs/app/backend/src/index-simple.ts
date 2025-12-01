@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.4';
+const VERSION = '1.3.5';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -454,6 +454,14 @@ try {
       const protocol = tlsOptions.enabled ? 'https' : 'http';
       const host = req.get('host') || `localhost:${tlsOptions.port}`;
       const serverUrl = `${protocol}://${host}`;
+
+      // Set permissive CSP that allows HTTP requests (prevents browser upgrade to HTTPS)
+      res.setHeader('Content-Security-Policy',
+        "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+        "connect-src * 'unsafe-inline'; " +
+        "script-src * 'unsafe-inline' 'unsafe-eval'; " +
+        "style-src * 'unsafe-inline';"
+      );
 
       // Create OpenAPI spec with dynamic server URL
       const specWithDynamicServer = {

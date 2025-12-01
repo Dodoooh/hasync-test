@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.4** - Swagger UI fully functional with dynamic server URL
+✅ **WORKING v1.3.5** - Swagger UI Execute fixed with CSP header
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

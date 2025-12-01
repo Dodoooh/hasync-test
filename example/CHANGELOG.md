@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.5
+
+- **SWAGGER UI EXECUTE TLS FIX: Permissive CSP header**
+- Fixed TLS errors when clicking Execute button
+- Problem: Browser auto-upgraded HTTP API calls to HTTPS
+- Solution: Set Content-Security-Policy header that allows HTTP connections
+- Prevents browser from upgrading insecure requests
+- API calls now work correctly over HTTP
+- Execute button fully functional without TLS errors
+
 ## 1.3.4
 
 - **SWAGGER UI EXECUTE FIX: Dynamic server URL**
