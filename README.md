@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-🔄 **UPDATE TEST v1.0.6** - Reverted to stable v1.0.4 config
+🔄 **UPDATE TEST v1.0.7** - Added ports and HAsync options (NO ingress)
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

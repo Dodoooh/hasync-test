@@ -1,6 +1,6 @@
 # https://developers.home-assistant.io/docs/add-ons/configuration#add-on-config
 name: HAsync - Home Assistant Manager
-version: "1.0.6"
+version: "1.0.7"
 slug: example
 description: Advanced Home Assistant management interface
 url: "https://github.com/Dodoooh/hasync-test/tree/main/example"
@@ -11,9 +11,23 @@ arch:
   - amd64
   - i386
 init: false
+ports:
+  8099/tcp: 8099
+  5173/tcp: 5173
+ports_description:
+  8099/tcp: Backend API Server
+  5173/tcp: Frontend Web Interface
 map:
   - share:rw
 options:
-  message: "Hello world..."
+  jwt_secret: "change-this-in-production-use-long-random-string"
+  database_path: "/data/hasync.db"
+  log_level: "info"
+  max_clients: 100
+  rate_limit: 500
 schema:
-  message: "str?"
+  jwt_secret: str
+  database_path: str
+  log_level: list(debug|info|warn|error)
+  max_clients: int(1,1000)
+  rate_limit: int(100,10000)
