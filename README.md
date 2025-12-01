@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.8** - Swagger UI fully functional with conditional CSRF
+✅ **WORKING v1.3.9** - Configurable admin credentials, no default passwords
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

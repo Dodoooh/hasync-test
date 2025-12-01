@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.9
+
+- **CONFIGURABLE ADMIN CREDENTIALS: Secure user management**
+- Admin username and password now configured via addon settings
+- Removed hardcoded default credentials (admin/test123)
+- Added mandatory credential validation on startup
+- Addon will not start with default password "change-this-password"
+- Login form no longer shows default credentials
+- Required fields: admin_username and admin_password in config
+- Enhanced security: Forces users to set strong credentials
+- Clean login interface without placeholder hints
+
 ## 1.3.8
 
 - **CSRF CONDITIONAL PROTECTION: JWT requests skip CSRF**

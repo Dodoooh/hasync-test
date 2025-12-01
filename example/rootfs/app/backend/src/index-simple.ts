@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.8';
+const VERSION = '1.3.9';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -78,6 +78,23 @@ const JWT_EXPIRATION = process.env.JWT_EXPIRATION || '24h';
 if (JWT_SECRET === 'change-this-in-production-use-long-random-string' && process.env.NODE_ENV === 'production') {
   logger.warn('⚠ WARNING: Using default JWT_SECRET in production. Set JWT_SECRET environment variable!');
 }
+
+// Admin credentials validation - REQUIRED!
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
+  logger.error('❌ FATAL: ADMIN_USERNAME and ADMIN_PASSWORD must be set in addon configuration!');
+  logger.error('Configure these in Home Assistant addon settings before starting.');
+  process.exit(1);
+}
+
+if (ADMIN_PASSWORD === 'change-this-password') {
+  logger.error('❌ FATAL: Default password detected! Change ADMIN_PASSWORD in addon configuration.');
+  process.exit(1);
+}
+
+logger.info(`✓ Admin credentials configured for user: ${ADMIN_USERNAME}`);
 
 
 // CORS configuration - restrictive whitelist approach - support both HTTP and HTTPS

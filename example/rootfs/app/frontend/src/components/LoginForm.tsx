@@ -169,9 +169,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
         </form>
 
         <Box sx={{ mt: 4, textAlign: 'center' }}>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-            Default credentials: admin / test123
-          </Typography>
           <Typography variant="caption" color="text.secondary">
             Powered by HAsync • v1.0.0
           </Typography>
