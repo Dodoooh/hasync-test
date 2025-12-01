@@ -292,7 +292,7 @@ const authenticate = (req, res, next) => {
       };
 
       // Update last_seen
-      db.prepare('UPDATE clients SET last_seen_at = ? WHERE id = ?').run(Date.now(), client.id);
+      db.prepare('UPDATE clients SET last_seen = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), client.id);
 
       next();
     } else {
@@ -885,8 +885,9 @@ app.post('/api/pairing/:sessionId/complete', authLimiter, authenticate, asyncHan
       last_seen,
       is_active,
       assigned_areas,
-      metadata
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      metadata,
+      token_hash
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     clientId,
     InputSanitizer.sanitizeString(clientName, 100),
@@ -902,7 +903,8 @@ app.post('/api/pairing/:sessionId/complete', authLimiter, authenticate, asyncHan
       sessionId: sessionId,
       approvedBy: req.user.username,
       approvedAt: new Date().toISOString()
-    })
+    }),
+    tokenHash // token_hash for authentication lookup
   );
 
   // Update pairing session status and link to client
@@ -1697,7 +1699,7 @@ app.get('/api/clients', readLimiter, authenticate, (_req: any, res: any) => {
           c.name,
           c.device_type,
           c.created_at,
-          c.last_seen_at,
+          c.last_seen,
           c.assigned_areas
         FROM clients c
         WHERE c.is_active = ?
@@ -1727,7 +1729,7 @@ app.get('/api/clients', readLimiter, authenticate, (_req: any, res: any) => {
           deviceType: client.device_type,
           assignedAreas,
           createdAt: client.created_at,
-          lastSeenAt: client.last_seen_at
+          lastSeenAt: client.last_seen
         };
       });
 
@@ -1745,8 +1747,8 @@ app.get('/api/clients', readLimiter, authenticate, (_req: any, res: any) => {
 // SECURITY: Client can only view their own information
 app.get('/api/clients/me', readLimiter, authenticate, (req: any, res: any) => {
   try {
-    // Extract client ID from JWT token (stored in username field for client tokens)
-    const clientId = req.user.username;
+    // Extract client ID from JWT token
+    const clientId = req.user.clientId || req.user.id;
 
     if (!clientId) {
       return res.status(401).json({
@@ -1763,7 +1765,7 @@ app.get('/api/clients/me', readLimiter, authenticate, (req: any, res: any) => {
         device_type,
         assigned_areas,
         created_at,
-        last_seen_at
+        last_seen
       FROM clients
       WHERE id = ? AND is_active = ?
     `).get(clientId, 1);
@@ -1798,7 +1800,7 @@ app.get('/api/clients/me', readLimiter, authenticate, (req: any, res: any) => {
       deviceType: client.device_type,
       assignedAreas,
       createdAt: client.created_at,
-      lastSeenAt: client.last_seen_at
+      lastSeenAt: client.last_seen
     });
   } catch (error: any) {
     logger.error('Error fetching client info:', error);
@@ -1831,7 +1833,7 @@ app.get('/api/clients/:id', readLimiter, authenticate, (req: any, res: any) => {
         device_type,
         assigned_areas,
         created_at,
-        last_seen_at
+        last_seen
       FROM clients
       WHERE id = ? AND is_active = ?
     `).get(id, 1);
@@ -1864,7 +1866,7 @@ app.get('/api/clients/:id', readLimiter, authenticate, (req: any, res: any) => {
       deviceType: client.device_type,
       assignedAreas,
       createdAt: client.created_at,
-      lastSeenAt: client.last_seen_at
+      lastSeenAt: client.last_seen
     });
   } catch (error: any) {
     logger.error('Error fetching client:', error);
@@ -1964,7 +1966,7 @@ app.put('/api/clients/:id', writeLimiter, csrfProtection, authenticate, (req: an
 
     // Get updated client with area details
     const updated: any = db.prepare(`
-      SELECT id, name, device_type, assigned_areas, created_at, last_seen_at
+      SELECT id, name, device_type, assigned_areas, created_at, last_seen
       FROM clients
       WHERE id = ?
     `).get(id);
@@ -1991,7 +1993,7 @@ app.put('/api/clients/:id', writeLimiter, csrfProtection, authenticate, (req: an
       deviceType: updated.device_type,
       assignedAreas: assignedAreasDetails,
       createdAt: updated.created_at,
-      lastSeenAt: updated.last_seen_at
+      lastSeenAt: updated.last_seen
     });
   } catch (error: any) {
     logger.error('Error updating client:', error);
