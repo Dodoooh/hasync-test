@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.6
+
+- **SWAGGER UI PATH FIX: Added /api prefix to server URL**
+- Fixed 404 errors when clicking Execute button
+- Problem: Server URL was `http://host:8099`, but routes are under `/api`
+- swagger.yaml defines paths like `/health`, server has them at `/api/health`
+- Solution: Add `/api` prefix to server URL → `http://host:8099/api`
+- Swagger UI now builds correct URLs: `/health` becomes `http://host:8099/api/health`
+- All Execute buttons work correctly - no more 404s!
+- This is the COMPLETE, FINAL, WORKING solution
+
 ## 1.3.5
 
 - **SWAGGER UI EXECUTE TLS FIX: Permissive CSP header**

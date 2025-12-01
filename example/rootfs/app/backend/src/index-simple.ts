@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.5';
+const VERSION = '1.3.6';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -424,7 +424,7 @@ try {
       // Set server URL dynamically based on request host
       const protocol = tlsOptions.enabled ? 'https' : 'http';
       const host = req.get('host') || `localhost:${tlsOptions.port}`;
-      const serverUrl = `${protocol}://${host}`;
+      const serverUrl = `${protocol}://${host}/api`;  // Add /api prefix!
 
       const spec = {
         ...swaggerDocument,
@@ -453,7 +453,7 @@ try {
       // Build server URL dynamically from request
       const protocol = tlsOptions.enabled ? 'https' : 'http';
       const host = req.get('host') || `localhost:${tlsOptions.port}`;
-      const serverUrl = `${protocol}://${host}`;
+      const serverUrl = `${protocol}://${host}/api`;  // Add /api prefix for correct routing!
 
       // Set permissive CSP that allows HTTP requests (prevents browser upgrade to HTTPS)
       res.setHeader('Content-Security-Policy',
