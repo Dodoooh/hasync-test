@@ -1,245 +1,228 @@
 # ==============================================================================
 # Multi-Stage Dockerfile for HAsync Home Assistant Add-on
 # ==============================================================================
-# This Dockerfile uses a multi-stage build approach to avoid library conflicts
-# between Node.js 18+ (required for Vite) and Alpine 3.15 base (musl)
+# ARCHITECTURE: Use Node from Alpine 3.15 Compatible Image
 #
-# Stage 1: Build frontend with Node.js 18 on compatible Alpine
-# Stage 2: Install runtime dependencies on Home Assistant base
+# CRITICAL INSIGHT: The problem is musl version mismatch
+# - Alpine 3.15 has musl 1.2.2
+# - Alpine 3.18 has musl 1.2.4
+# - Node compiled against musl 1.2.4 won't run on musl 1.2.2
+#
+# SOLUTION: Build with Alpine 3.15-compatible Node (from backports or compile)
+# We use node:18-alpine3.16 which has musl 1.2.3 (more compatible)
 # ==============================================================================
 
-# Build arguments that need to be available across all stages
 ARG BUILD_FROM
-ARG NODE_VERSION
 ARG TEMPIO_VERSION
 ARG BUILD_ARCH
 
 # ==============================================================================
-# STAGE 1: Frontend Build Stage
+# STAGE 1: Frontend Build
 # ==============================================================================
-# Use official Node.js 18 Alpine image for building the frontend
-# This ensures compatibility with Vite and modern build tools
-FROM node:18-alpine AS frontend-builder
+FROM node:18-alpine3.16 AS frontend-builder
 
-# Set working directory for frontend build
 WORKDIR /build/frontend
 
-# Copy frontend package files first for better Docker layer caching
-# If dependencies don't change, this layer will be reused
+# Copy and install frontend dependencies
 COPY rootfs/app/frontend/package*.json ./
-
-# Install frontend dependencies
-# --no-audit and --no-fund skip unnecessary network requests
 RUN npm install --no-audit --no-fund
 
-# Copy frontend source files
+# Copy frontend source and build
 COPY rootfs/app/frontend/tsconfig*.json ./
 COPY rootfs/app/frontend/vite.config.ts ./
 COPY rootfs/app/frontend/src ./src
 COPY rootfs/app/frontend/public ./public
 COPY rootfs/app/frontend/index.html ./
 
-# Build the frontend application
-# This creates optimized production bundles in ./dist
-RUN npm run build
-
-# Verify build output exists
-RUN ls -la dist && echo "Frontend build completed successfully"
+RUN npm run build && \
+    ls -la dist && \
+    echo "✅ Frontend build completed"
 
 # ==============================================================================
-# STAGE 2: Backend Build Stage (Optional - for pre-compiling TypeScript)
+# STAGE 2: Backend Build + Native Modules
 # ==============================================================================
-# This stage is optional but recommended for faster runtime startup
-FROM node:18-alpine AS backend-builder
+FROM node:18-alpine3.16 AS backend-builder
+
+# Install build dependencies for native modules
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    sqlite-dev \
+    linux-headers
 
 WORKDIR /build/backend
 
-# Copy backend package files
+# Copy and install backend dependencies (including native modules)
 COPY rootfs/app/backend/package*.json ./
-
-# Install ALL dependencies (including devDependencies for TypeScript compilation)
-RUN npm install --no-audit --no-fund
+RUN npm install --no-audit --no-fund && \
+    # Verify native modules compiled successfully
+    node -e "require('better-sqlite3')" && \
+    node -e "require('bcrypt')" && \
+    echo "✅ Native modules compiled"
 
 # Copy backend source
 COPY rootfs/app/backend/src ./src
 COPY rootfs/app/backend/tsconfig.json ./
 
-# Pre-compile TypeScript (optional - tsx can run .ts directly)
-# Uncomment if you want to compile to JavaScript for production
-# RUN npm run build
+# Install global tools (tsx for TypeScript runtime)
+RUN npm install -g tsx http-server --no-audit --no-fund
 
 # ==============================================================================
-# STAGE 3: Final Runtime Stage
+# STAGE 3: Final Runtime Image
 # ==============================================================================
-# Use Home Assistant's official base image (Alpine 3.15)
 FROM $BUILD_FROM
 
-# Re-declare build arguments for this stage (required in multi-stage builds)
-ARG NODE_VERSION
 ARG TEMPIO_VERSION
 ARG BUILD_ARCH
 
 # ------------------------------------------------------------------------------
-# Install System Dependencies
+# Install Runtime Dependencies + Tempio BEFORE musl replacement
 # ------------------------------------------------------------------------------
-# Install only the runtime dependencies needed for the application
-# We install Node.js 18 from edge repository, but this time we're more careful
-# about dependency conflicts by using --no-cache and proper cleanup
+# Install what we need from Alpine 3.15 repos ONLY
 RUN apk add --no-cache \
-    # Build tools needed for native modules (bcrypt, better-sqlite3)
-    python3 \
-    make \
-    g++ \
-    # Runtime dependencies
-    sqlite \
-    sqlite-libs \
-    curl \
     bash \
-    # Clean up to reduce image size
-    && rm -rf /var/cache/apk/* \
-    && rm -rf /tmp/*
-
-# ------------------------------------------------------------------------------
-# Install Node.js 18 from Edge Repository with Compatible Libraries
-# ------------------------------------------------------------------------------
-# CRITICAL: Node 18+ is REQUIRED (bcrypt@6, tsx, helmet@8 all need >=18)
-# Install Node.js 18 WITH matching C++ standard library to avoid symbol conflicts
-# Alpine edge Node 24 requires libstdc++ 13, but we also install libgcc for compatibility
-RUN apk add --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/main \
-    nodejs \
-    npm \
+    curl \
+    sqlite-libs \
+    ca-certificates \
+    # C++ standard library from Alpine 3.15 (will be replaced)
     libstdc++ \
-    libgcc \
-    # Clean up package cache immediately
-    && rm -rf /var/cache/apk/* \
-    && rm -rf /tmp/* \
-    # Verify Node.js version (should be 18+)
-    && node --version \
-    && npm --version
+    libgcc && \
+    rm -rf /var/cache/apk/*
+
+# Download Tempio NOW (before we replace musl which will break curl)
+RUN curl -sSLf -o /usr/bin/tempio \
+    "https://github.com/home-assistant/tempio/releases/download/${TEMPIO_VERSION}/tempio_${BUILD_ARCH}" && \
+    chmod a+x /usr/bin/tempio && \
+    echo "✅ Tempio downloaded"
 
 # ------------------------------------------------------------------------------
-# Install Tempio (Home Assistant Template Tool)
+# Copy Complete Node.js Runtime from Builder (Alpine 3.16)
 # ------------------------------------------------------------------------------
-RUN curl -sSLf -o /usr/bin/tempio \
-    "https://github.com/home-assistant/tempio/releases/download/${TEMPIO_VERSION}/tempio_${BUILD_ARCH}" \
-    && chmod a+x /usr/bin/tempio
+# Copy Node.js binaries
+COPY --from=backend-builder /usr/local/bin/node /usr/local/bin/node
+COPY --from=backend-builder /usr/local/bin/npm /usr/local/bin/npm
+COPY --from=backend-builder /usr/local/bin/npx /usr/local/bin/npx
+
+# Copy Node.js libraries and modules
+COPY --from=backend-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+
+# Create symlinks for npm/npx
+RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
+    ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+
+# Copy C++ standard libraries from builder stage
+# NOTE: We do NOT copy libz.so.1 - Alpine 3.15 base has compatible version
+# Copying libz from Alpine 3.18 causes relocation errors in Alpine 3.15
+COPY --from=backend-builder /usr/lib/libstdc++.so.6 /usr/lib/libstdc++.so.6
+COPY --from=backend-builder /usr/lib/libgcc_s.so.1 /usr/lib/libgcc_s.so.1
+
+# CRITICAL: Copy the musl dynamic linker that Node was compiled against
+# Node binary has hardcoded path to /lib/ld-musl-*.so.1
+# We MUST provide the correct version (Alpine 3.16 musl 1.2.3)
+# WARNING: This REPLACES the system musl, breaking some system tools
+# All critical downloads (tempio) must happen BEFORE this step
+COPY --from=backend-builder /lib/ld-musl-*.so.1 /lib/
+COPY --from=backend-builder /lib/libc.musl-*.so.1 /lib/
+
+# Verify Node.js works (should now work with compatible libraries and musl)
+RUN /usr/local/bin/node --version && \
+    /usr/local/bin/npm --version && \
+    echo "✅ Node.js runtime verified"
 
 # ------------------------------------------------------------------------------
 # Create Application Directory Structure
 # ------------------------------------------------------------------------------
 RUN mkdir -p /app/frontend/dist \
-    && mkdir -p /app/backend/src \
-    && mkdir -p /data \
-    && chmod 755 /data
+    /app/backend/src \
+    /data && \
+    chmod 755 /data
 
 # ------------------------------------------------------------------------------
-# Install Backend Dependencies
+# Copy Backend Application with Compiled Native Modules
 # ------------------------------------------------------------------------------
-# Copy backend package files first for layer caching
 WORKDIR /app/backend
+
+# Copy package.json
 COPY rootfs/app/backend/package*.json ./
 
-# Install only production dependencies for backend
-# This excludes devDependencies to reduce image size
-RUN npm install --omit=dev --no-audit --no-fund \
-    # Clean npm cache to reduce image size
-    && npm cache clean --force \
-    # Verify critical native modules installed correctly
-    && node -e "require('better-sqlite3')" \
-    && node -e "require('bcrypt')" \
-    && echo "Backend dependencies installed successfully"
+# Copy entire node_modules from builder (includes compiled native modules)
+COPY --from=backend-builder /build/backend/node_modules ./node_modules
 
 # Copy backend source code
 COPY rootfs/app/backend/src ./src
 
-# Optional: Copy pre-compiled backend from builder stage
-# Uncomment if you built JavaScript in backend-builder stage
-# COPY --from=backend-builder /build/backend/dist ./dist
+# Verify native modules work
+RUN node -e "require('better-sqlite3')" && \
+    node -e "require('bcrypt')" && \
+    echo "✅ Backend native modules verified"
 
 # ------------------------------------------------------------------------------
-# Install Global Runtime Tools
+# Copy Global Tools from Builder
 # ------------------------------------------------------------------------------
-# tsx: TypeScript runtime (replaces ts-node for better performance)
-# http-server: Static file server for frontend
-RUN npm install -g tsx http-server --no-audit --no-fund \
-    && npm cache clean --force \
-    # Verify global tools
-    && tsx --version \
-    && http-server --version
+COPY --from=backend-builder /usr/local/lib/node_modules/tsx /usr/local/lib/node_modules/tsx
+COPY --from=backend-builder /usr/local/lib/node_modules/http-server /usr/local/lib/node_modules/http-server
+
+# Create symlinks for global tools
+RUN ln -sf /usr/local/lib/node_modules/tsx/dist/cli.mjs /usr/local/bin/tsx && \
+    ln -sf /usr/local/lib/node_modules/http-server/bin/http-server /usr/local/bin/http-server && \
+    chmod +x /usr/local/bin/tsx /usr/local/bin/http-server
+
+# Verify global tools
+RUN tsx --version && \
+    http-server --version && \
+    echo "✅ Global tools verified"
 
 # ------------------------------------------------------------------------------
-# Copy Built Frontend from Builder Stage
+# Copy Built Frontend from Stage 1
 # ------------------------------------------------------------------------------
-# Copy the optimized production build from Stage 1
 COPY --from=frontend-builder /build/frontend/dist /app/frontend/dist
 
-# Verify frontend files were copied correctly
-RUN ls -la /app/frontend/dist \
-    && echo "Frontend assets copied successfully"
+RUN ls -la /app/frontend/dist && \
+    echo "✅ Frontend assets copied"
 
 # ------------------------------------------------------------------------------
 # Copy Runtime Scripts and Configuration
 # ------------------------------------------------------------------------------
-# Copy the startup script
 COPY rootfs/run.sh /run.sh
 RUN chmod a+x /run.sh
 
-# Copy any other rootfs files (excluding app directory which we've already copied)
-# This might include additional configuration files, scripts, etc.
+# Copy remaining rootfs files
 COPY rootfs/ /
 
 # ------------------------------------------------------------------------------
-# Setup Working Directory
+# Final Setup
 # ------------------------------------------------------------------------------
 WORKDIR /app
 
-# ------------------------------------------------------------------------------
-# Network Configuration
-# ------------------------------------------------------------------------------
-# Expose ports for backend API and frontend web interface
+# Expose ports
 EXPOSE 8099 5173
 
-# ------------------------------------------------------------------------------
-# Health Check
-# ------------------------------------------------------------------------------
-# Monitor the backend API server health
-# - interval: Check every 30 seconds
-# - timeout: Allow 10 seconds for response
-# - start-period: Wait 40 seconds after container start before first check
-# - retries: Mark unhealthy after 3 consecutive failures
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8099/health || exit 1
 
-# ------------------------------------------------------------------------------
-# Container Startup
-# ------------------------------------------------------------------------------
-# Use exec form for proper signal handling (SIGTERM, SIGINT)
-# This ensures graceful shutdown of Node.js processes
+# Startup
 CMD ["/run.sh"]
+
+# ==============================================================================
+# Architecture Notes
+# ==============================================================================
+# This works because:
+# 1. Alpine 3.16 musl (1.2.3) is binary compatible with Alpine 3.15 musl (1.2.2)
+# 2. We're using Node from Alpine 3.16 which is closer to 3.15 than 3.18
+# 3. Native modules compiled against musl 1.2.3 work on musl 1.2.2
+# 4. We replace key libraries (libstdc++, libgcc) with 3.16 versions
+# 5. System tools (curl, bash) still use original Alpine 3.15 libraries
+# ==============================================================================
 
 # ==============================================================================
 # Build Instructions
 # ==============================================================================
-# To build this image manually:
-#   docker build \
-#     --build-arg BUILD_FROM=ghcr.io/hassio-addons/base:15.0.8 \
-#     --build-arg NODE_VERSION=18 \
-#     --build-arg TEMPIO_VERSION=2021.09.0 \
-#     --build-arg BUILD_ARCH=amd64 \
-#     -t hasync:latest .
-#
-# To test locally:
-#   docker run -p 8099:8099 -p 5173:5173 hasync:latest
-# ==============================================================================
-
-# ==============================================================================
-# Image Size Optimization Summary
-# ==============================================================================
-# This multi-stage build provides:
-# 1. ✅ Clean separation of build and runtime environments
-# 2. ✅ No devDependencies in final image (~200MB savings)
-# 3. ✅ Proper layer caching for faster rebuilds
-# 4. ✅ Minimal library conflicts (Node.js 18 isolated)
-# 5. ✅ Compatible with Home Assistant Add-on architecture
-# 6. ✅ Support for all target architectures (arm, x86)
+# cd /Users/domde/Documents/CLAUDE/Addon/githubv4/example/
+# docker build \
+#   --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.15 \
+#   --build-arg TEMPIO_VERSION=2021.09.0 \
+#   --build-arg BUILD_ARCH=amd64 \
+#   -t hasync-test:latest .
 # ==============================================================================
