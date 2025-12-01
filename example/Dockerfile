@@ -22,11 +22,8 @@ RUN curl -fsSL "https://nodejs.org/dist/v18.20.5/node-v18.20.5-linux-x64.tar.xz"
     && tar -xJf /tmp/node.tar.xz -C /usr/local/lib/nodejs \
     && rm /tmp/node.tar.xz
 
-# Add Node.js to PATH
+# Add Node.js to PATH (verification will happen during npm install)
 ENV PATH="/usr/local/lib/nodejs/node-v18.20.5-linux-x64/bin:${PATH}"
-
-# Verify Node.js installation
-RUN node --version && npm --version
 
 # Execute during the build of the image
 ARG TEMPIO_VERSION BUILD_ARCH
