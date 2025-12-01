@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.7
+
+- **SWAGGER UI FIX: Resolved HTTPS/HTTP asset loading issue**
+- Fixed "TLS-Fehler" when loading Swagger UI on HTTP-only server
+- Swagger now correctly uses HTTP protocol for asset loading
+- Added dynamic server URL configuration based on TLS settings
+- API Docs now fully functional at `http://IP:8099/api-docs`
+- **BACKUP IMPROVEMENTS: Fixed chmod error on non-existent files**
+- Added file existence check before setting permissions
+- Backup failures no longer crash server startup
+- Better error handling and logging for backup operations
+
 ## 1.2.6
 
 - **VERSION DISPLAY: Server startup now shows version number**

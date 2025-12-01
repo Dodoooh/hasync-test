@@ -155,14 +155,19 @@ export function createDatabaseBackup(db: Database.Database, backupDir: string): 
     // Perform backup using SQLite backup API
     db.backup(backupPath);
 
-    // Set secure permissions on backup file
-    chmodSync(backupPath, 0o600);
+    // Set secure permissions on backup file (only if it exists)
+    if (existsSync(backupPath)) {
+      chmodSync(backupPath, 0o600);
+      console.log(`✓ Database backup created: ${backupPath}`);
+    } else {
+      console.warn(`⚠ Backup file not created: ${backupPath}`);
+    }
 
-    console.log(`✓ Database backup created: ${backupPath}`);
     return backupPath;
   } catch (error: any) {
     console.error('✗ Failed to create database backup:', error.message);
-    throw error;
+    // Don't throw error - just log it (backup failure shouldn't stop server)
+    return '';
   }
 }
 

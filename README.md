@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.2.6** - Version display and API Docs fixes
+✅ **WORKING v1.2.7** - Swagger UI HTTP fix and backup improvements
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

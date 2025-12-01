@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.2.6';
+const VERSION = '1.2.7';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -419,6 +419,16 @@ try {
     // Update version in swagger doc
     swaggerDocument.info.version = VERSION;
 
+    // Force HTTP server URL (fixes HTTPS asset loading on HTTP-only server)
+    const protocol = tlsOptions.enabled ? 'https' : 'http';
+    const serverUrl = `${protocol}://localhost:${tlsOptions.port}`;
+    swaggerDocument.servers = [
+      {
+        url: serverUrl,
+        description: 'HAsync Backend API Server'
+      }
+    ];
+
     app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
       customCss: '.swagger-ui .topbar { display: none }',
       customSiteTitle: `HAsync API Documentation v${VERSION}`,
@@ -426,9 +436,10 @@ try {
         persistAuthorization: true,
         displayRequestDuration: true,
         tryItOutEnabled: true,
+        url: serverUrl + '/api-docs/swagger.json',
       }
     }));
-    logger.info(`Swagger UI available at /api-docs (v${VERSION})`);
+    logger.info(`Swagger UI available at /api-docs (v${VERSION}) [${protocol.toUpperCase()}]`);
   }
 } catch (error) {
   logger.warn('Failed to load Swagger documentation', { error: error instanceof Error ? error.message : 'Unknown error' });
