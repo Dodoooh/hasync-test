@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.2.8';
+const VERSION = '1.2.9';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -411,7 +411,7 @@ try {
   console.error('✗ Database error:', error);
 }
 
-// Swagger API documentation
+// Swagger API documentation - CUSTOM SETUP to avoid HTTPS/HTTP issues
 try {
   const swaggerPath = join(__dirname, 'swagger.yaml');
   if (existsSync(swaggerPath)) {
@@ -419,7 +419,7 @@ try {
     // Update version in swagger doc
     swaggerDocument.info.version = VERSION;
 
-    // Force HTTP server URL (fixes HTTPS asset loading on HTTP-only server)
+    // Force HTTP server URL
     const protocol = tlsOptions.enabled ? 'https' : 'http';
     const serverUrl = `${protocol}://localhost:${tlsOptions.port}`;
     swaggerDocument.servers = [
@@ -429,21 +429,61 @@ try {
       }
     ];
 
-    // IMPORTANT: Use serveFiles to force local asset serving instead of CDN
-    // This prevents HTTPS/HTTP mixed content errors
-    app.use('/api-docs',
-      swaggerUi.serveFiles(swaggerDocument, {}),
-      swaggerUi.setup(swaggerDocument, {
-        customCss: '.swagger-ui .topbar { display: none }',
-        customSiteTitle: `HAsync API Documentation v${VERSION}`,
-        swaggerOptions: {
-          persistAuthorization: true,
-          displayRequestDuration: true,
-          tryItOutEnabled: true,
-        }
-      })
-    );
-    logger.info(`Swagger UI available at /api-docs (v${VERSION}) [${protocol.toUpperCase()}]`);
+    // Serve swagger spec JSON
+    app.get('/api-docs/swagger.json', (_req, res) => {
+      res.json(swaggerDocument);
+    });
+
+    // Serve Swagger UI static files from node_modules
+    const pathToSwaggerUi = require.resolve('swagger-ui-dist').replace(/index\.html$/, '');
+    app.use('/api-docs/static', express.static(pathToSwaggerUi));
+
+    // Custom HTML page that ONLY loads local assets (no CDN, no HTTPS)
+    app.get('/api-docs', (_req, res) => {
+      const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>HAsync API Documentation v${VERSION}</title>
+  <link rel="stylesheet" type="text/css" href="/api-docs/static/swagger-ui.css">
+  <style>
+    html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
+    *, *:before, *:after { box-sizing: inherit; }
+    body { margin:0; padding:0; }
+    .swagger-ui .topbar { display: none }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="/api-docs/static/swagger-ui-bundle.js" charset="UTF-8"></script>
+  <script src="/api-docs/static/swagger-ui-standalone-preset.js" charset="UTF-8"></script>
+  <script>
+    window.onload = function() {
+      window.ui = SwaggerUIBundle({
+        url: "/api-docs/swagger.json",
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: "StandaloneLayout",
+        persistAuthorization: true,
+        displayRequestDuration: true,
+        tryItOutEnabled: true
+      });
+    };
+  </script>
+</body>
+</html>`;
+      res.send(html);
+    });
+
+    logger.info(`Swagger UI available at /api-docs (v${VERSION}) [${protocol.toUpperCase()}] - Custom HTML with local assets`);
   }
 } catch (error) {
   logger.warn('Failed to load Swagger documentation', { error: error instanceof Error ? error.message : 'Unknown error' });

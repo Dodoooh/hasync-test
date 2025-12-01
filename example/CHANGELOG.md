@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.9
+
+- **SWAGGER UI COMPLETE REWRITE: Custom HTML with guaranteed local assets**
+- Completely replaced swagger-ui-express automatic setup
+- Created custom HTML template that explicitly loads from `/api-docs/static/`
+- Serve swagger-ui-dist files via express.static (node_modules)
+- All assets now load from local server: `/api-docs/static/swagger-ui.css`, etc.
+- Eliminates ANY possibility of CDN/HTTPS loading
+- 100% control over asset paths - no more black box behavior
+- This MUST work - assets are hardcoded to local HTTP paths
+
 ## 1.2.8
 
 - **SWAGGER UI DEFINITIVE FIX: Local asset serving**

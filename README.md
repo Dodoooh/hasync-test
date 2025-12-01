@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.2.8** - Swagger UI local assets fix (no more CDN/HTTPS errors)
+✅ **WORKING v1.2.9** - Custom Swagger UI HTML with guaranteed local assets
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
