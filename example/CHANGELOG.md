@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0
+
+- **SWAGGER UI ABSOLUTE URLS: Fixed browser HTTPS auto-upgrade**
+- Root cause identified: Browser upgraded relative URLs to HTTPS automatically
+- Changed from relative (`/api-docs/static/...`) to absolute (`http://host/api-docs/static/...`)
+- URLs built dynamically from request host header
+- Prevents browser HSTS/Mixed Content policies from forcing HTTPS
+- Assets now explicitly loaded over HTTP when server runs on HTTP
+- Server logs should now show asset requests successfully
+
 ## 1.2.9
 
 - **SWAGGER UI COMPLETE REWRITE: Custom HTML with guaranteed local assets**

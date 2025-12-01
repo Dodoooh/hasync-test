@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.2.9';
+const VERSION = '1.3.0';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -438,15 +438,20 @@ try {
     const pathToSwaggerUi = require.resolve('swagger-ui-dist').replace(/index\.html$/, '');
     app.use('/api-docs/static', express.static(pathToSwaggerUi));
 
-    // Custom HTML page that ONLY loads local assets (no CDN, no HTTPS)
-    app.get('/api-docs', (_req, res) => {
+    // Custom HTML page with ABSOLUTE HTTP URLs to prevent browser HTTPS upgrade
+    app.get('/api-docs', (req, res) => {
+      // Build absolute HTTP URL from request (prevents browser auto-upgrade to HTTPS)
+      const protocol = tlsOptions.enabled ? 'https' : 'http';
+      const host = req.get('host') || `localhost:${tlsOptions.port}`;
+      const baseUrl = `${protocol}://${host}`;
+
       const html = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>HAsync API Documentation v${VERSION}</title>
-  <link rel="stylesheet" type="text/css" href="/api-docs/static/swagger-ui.css">
+  <link rel="stylesheet" type="text/css" href="${baseUrl}/api-docs/static/swagger-ui.css">
   <style>
     html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
     *, *:before, *:after { box-sizing: inherit; }
@@ -456,12 +461,12 @@ try {
 </head>
 <body>
   <div id="swagger-ui"></div>
-  <script src="/api-docs/static/swagger-ui-bundle.js" charset="UTF-8"></script>
-  <script src="/api-docs/static/swagger-ui-standalone-preset.js" charset="UTF-8"></script>
+  <script src="${baseUrl}/api-docs/static/swagger-ui-bundle.js" charset="UTF-8"></script>
+  <script src="${baseUrl}/api-docs/static/swagger-ui-standalone-preset.js" charset="UTF-8"></script>
   <script>
     window.onload = function() {
       window.ui = SwaggerUIBundle({
-        url: "/api-docs/swagger.json",
+        url: "${baseUrl}/api-docs/swagger.json",
         dom_id: '#swagger-ui',
         deepLinking: true,
         presets: [

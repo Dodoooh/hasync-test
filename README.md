@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.2.9** - Custom Swagger UI HTML with guaranteed local assets
+✅ **WORKING v1.3.0** - Absolute HTTP URLs prevent browser HTTPS upgrade
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
