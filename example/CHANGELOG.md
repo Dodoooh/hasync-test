@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.11
+
+- **FEATURE: Open Web UI button**
+- Added webui configuration to addon
+- "Open Web UI" button now appears in Home Assistant addon info page
+- Opens frontend interface (port 5173) with one click
+- Automatic host detection using [HOST] placeholder
+
 ## 1.3.10
 
 - **BUGFIX: Admin credentials now properly exported from config**

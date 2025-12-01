@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.10** - Fixed: Admin credentials now properly read from config
+✅ **WORKING v1.3.11** - Added "Open Web UI" button for easy access
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
