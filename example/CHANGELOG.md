@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.9
+
+- **CRITICAL FIX: CORS configuration for Home Assistant network**
+- Added ALLOWED_ORIGINS environment variable in run.sh
+- Configured CORS to allow internal Home Assistant IPs (172.x, 10.x, 192.168.x)
+- Allow proxied requests from http-server (frontend → backend)
+- Support for requests without Origin header from internal network
+- Fixes "Not allowed by CORS" error on login
+
 ## 1.1.8
 
 - Fixed health check endpoint: Changed from `/health` to `/api/health`

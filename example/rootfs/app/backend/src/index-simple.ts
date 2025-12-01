@@ -273,11 +273,14 @@ app.use(cors({
       const referer = callback['req']?.headers?.referer;
       const host = callback['req']?.headers?.host;
 
-      // Allow only localhost development tools (Postman, curl, etc.) and mobile apps
+      // Allow localhost, internal IPs, and Home Assistant addon network
       const isLocalhost = host?.includes('localhost') || host?.includes('127.0.0.1');
+      const isInternalIP = host?.includes('172.') || host?.includes('10.') || host?.includes('192.168.');
       const isTrustedTool = referer === undefined || referer?.includes('localhost');
+      const forwardedFor = callback['req']?.headers['x-forwarded-for'];
+      const isProxied = forwardedFor !== undefined; // Allow proxied requests (http-server)
 
-      if (isLocalhost || isTrustedTool) {
+      if (isLocalhost || isInternalIP || isTrustedTool || isProxied) {
         callback(null, true);
         return;
       }

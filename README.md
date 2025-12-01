@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.1.8** - Fixed health check endpoint and backup directory
+✅ **WORKING v1.1.9** - Fixed CORS for Home Assistant network
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
