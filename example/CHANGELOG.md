@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.22
+
+- **HOTFIX: Moved authenticate function before first usage**
+- Problem: v1.3.21 used authenticate at line 578 but defined it at line 1214
+- JavaScript error: "ReferenceError: authenticate is not defined"
+- Server crashed on startup - critical bug
+- Solution: Moved authenticate function to line 228 (after rate limiters)
+- Removed duplicate authenticate definition at old location
+- Now defined BEFORE it's used in pairing endpoint
+- Server starts successfully
+- Pairing endpoint security fix from v1.3.21 now works correctly
+
 ## 1.3.21
 
 - **SECURITY FIX: Pairing endpoint now requires admin authentication**

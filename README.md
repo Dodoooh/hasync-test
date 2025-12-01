@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.21** - Pairing endpoint requires admin authentication (SECURITY FIX)
+✅ **WORKING v1.3.22** - Fixed authenticate function order (HOTFIX)
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

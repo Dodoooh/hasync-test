@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.21';
+const VERSION = '1.3.22';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -224,6 +224,51 @@ const readLimiter = rateLimit({
     });
   }
 });
+
+// Authentication Middleware - Extract and verify JWT token
+const authenticate = (req, res, next) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'No token provided'
+    });
+  }
+
+  try {
+    // Verify and decode JWT token
+    const decoded = jwt.verify(token, JWT_SECRET, {
+      issuer: 'hasync-backend',
+      audience: 'hasync-client'
+    }) as { username: string; role: string; iat: number; exp: number };
+
+    // Attach user information to request
+    req.user = {
+      id: decoded.username,
+      username: decoded.username,
+      role: decoded.role
+    };
+    next();
+  } catch (error: any) {
+    logger.warn(`Authentication failed: ${error.message}`);
+
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        error: 'Token expired',
+        message: 'Your session has expired. Please log in again.',
+        expiredAt: error.expiredAt
+      });
+    } else if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
+        error: 'Invalid token signature'
+      });
+    } else {
+      return res.status(401).json({
+        error: 'Authentication failed'
+      });
+    }
+  }
+};
 
 // Security Headers - Must be configured before other middleware
 app.use(helmet({
@@ -1209,51 +1254,6 @@ io.on('connection', (socket) => {
   const user = socket.user;
 
 // GDPR Compliance Endpoints
-
-// Middleware to extract user ID from token
-const authenticate = (req, res, next) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) {
-    return res.status(401).json({
-      error: 'Unauthorized',
-      message: 'No token provided'
-    });
-  }
-
-  try {
-    // Verify and decode JWT token
-    const decoded = jwt.verify(token, JWT_SECRET, {
-      issuer: 'hasync-backend',
-      audience: 'hasync-client'
-    }) as { username: string; role: string; iat: number; exp: number };
-
-    // Attach user information to request
-    req.user = {
-      id: decoded.username,
-      username: decoded.username,
-      role: decoded.role
-    };
-    next();
-  } catch (error: any) {
-    logger.warn(`Authentication failed: ${error.message}`);
-
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({
-        error: 'Token expired',
-        message: 'Your session has expired. Please log in again.',
-        expiredAt: error.expiredAt
-      });
-    } else if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({
-        error: 'Invalid token signature'
-      });
-    } else {
-      return res.status(401).json({
-        error: 'Authentication failed'
-      });
-    }
-  }
-};
 
 // Data Export - Right to Access (GDPR Article 15)
 app.get('/api/user/data-export', readLimiter, authenticate, (req, res) => {
