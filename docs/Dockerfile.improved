@@ -1,0 +1,103 @@
+# https://developers.home-assistant.io/docs/add-ons/configuration#add-on-dockerfile
+ARG BUILD_FROM
+FROM $BUILD_FROM
+
+# Build arguments from build.yaml
+ARG NODE_VERSION=20.10.0
+
+# Install build dependencies first (layer caching optimization)
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    sqlite \
+    curl \
+    bash \
+    && rm -rf /var/cache/apk/*
+
+# Install Node.js from edge repository with version pinning
+# Note: Check available versions at https://pkgs.alpinelinux.org/packages?name=nodejs&branch=edge
+RUN apk add --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/main \
+    nodejs \
+    npm \
+    && rm -rf /var/cache/apk/* \
+    && node --version \
+    && npm --version
+
+# Verify Node.js version meets requirements (>=18.0.0)
+RUN MAJOR_VERSION=$(node --version | cut -d'.' -f1 | sed 's/v//') && \
+    if [ "$MAJOR_VERSION" -lt 18 ]; then \
+        echo "ERROR: Node.js version must be >= 18.0.0, found: $(node --version)" >&2; \
+        exit 1; \
+    fi && \
+    echo "✓ Node.js version check passed: $(node --version)"
+
+# Execute during the build of the image
+ARG TEMPIO_VERSION BUILD_ARCH
+RUN \
+    curl -sSLf -o /usr/bin/tempio \
+    "https://github.com/home-assistant/tempio/releases/download/${TEMPIO_VERSION}/tempio_${BUILD_ARCH}"
+
+# Copy root filesystem
+COPY rootfs /
+
+# Set working directory
+WORKDIR /app
+
+# Copy backend package files first for better layer caching
+COPY rootfs/app/backend/package*.json /app/backend/
+WORKDIR /app/backend
+
+# Install backend dependencies (production only)
+RUN npm install --omit=dev --no-audit --no-fund \
+    && npm cache clean --force
+
+# Verify native modules installed correctly
+RUN node -e "require('bcrypt'); require('better-sqlite3'); console.log('✓ Native modules loaded successfully')" || \
+    (echo "ERROR: Native modules failed to load" >&2 && exit 1)
+
+# Copy backend source
+COPY rootfs/app/backend/src /app/backend/src
+
+# Copy frontend package files
+WORKDIR /app/frontend
+COPY rootfs/app/frontend/package*.json /app/frontend/
+COPY rootfs/app/frontend/tsconfig*.json /app/frontend/
+COPY rootfs/app/frontend/vite.config.ts /app/frontend/
+
+# Install frontend dependencies (including dev for build)
+RUN npm install --no-audit --no-fund
+
+# Copy frontend source
+COPY rootfs/app/frontend/src /app/frontend/src
+COPY rootfs/app/frontend/public /app/frontend/public
+COPY rootfs/app/frontend/index.html /app/frontend/
+
+# Build frontend with error handling
+RUN npm run build \
+    && npm cache clean --force \
+    && ls -lah /app/frontend/dist \
+    && echo "✓ Frontend build completed successfully"
+
+# Install global tools
+RUN npm install -g tsx http-server --no-audit --no-fund \
+    && npm cache clean --force
+
+# Setup data directory with proper permissions
+RUN mkdir -p /data && chmod 755 /data
+
+# Reset to app directory
+WORKDIR /app
+
+# Make run.sh executable
+RUN chmod a+x /run.sh
+
+# Expose ports (backend API and frontend UI)
+EXPOSE 8099 5173
+
+# Health check with proper timeout
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8099/health || exit 1
+
+# Use exec form for proper signal handling
+CMD ["/run.sh"]
