@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.3
+
+- **TEMPORARY FIX: CSRF disabled for /api/config/ha endpoint**
+- Allows Home Assistant configuration to be saved without CSRF issues
+- Other endpoints still protected by CSRF
+- Temporary workaround while investigating proxy cookie handling
+
 ## 1.2.2
 
 - **FIX: CSRF token compatibility with http-server proxy**

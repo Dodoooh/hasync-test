@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.2.2** - Fixed CSRF token for proxy compatibility
+✅ **WORKING v1.2.3** - CSRF disabled for Home Assistant config endpoint
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
