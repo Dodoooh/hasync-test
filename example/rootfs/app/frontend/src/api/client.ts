@@ -5,6 +5,7 @@ class ApiClient {
   private instance: AxiosInstance;
   private baseURL: string;
   private csrfToken: string | null = null;
+  private accessToken: string | null = null;
 
   constructor() {
     this.baseURL = '/api';
@@ -17,9 +18,14 @@ class ApiClient {
       withCredentials: true, // CRITICAL: Include httpOnly cookies in all requests
     });
 
-    // Request interceptor - add CSRF token for state-changing requests
+    // Request interceptor - add CSRF token and JWT token for requests
     this.instance.interceptors.request.use(
       async (config) => {
+        // Add JWT Bearer token if available
+        if (this.accessToken) {
+          config.headers['Authorization'] = `Bearer ${this.accessToken}`;
+        }
+
         // Add CSRF token for state-changing requests (POST, PUT, PATCH, DELETE)
         if (['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase() || '')) {
           if (!this.csrfToken) {
@@ -102,6 +108,15 @@ class ApiClient {
    */
   private async initializeCsrfToken(): Promise<void> {
     await this.fetchCsrfToken();
+  }
+
+  /**
+   * Set JWT access token for API requests
+   * Called after successful login to authenticate all subsequent requests
+   */
+  setAuthToken(token: string | null): void {
+    this.accessToken = token;
+    console.log('✓ API client token updated:', token ? 'Token set' : 'Token cleared');
   }
 
   /**

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.3.23
+
+- **FRONTEND FIX: JWT token now sent with pairing endpoint requests**
+- Problem: v1.3.21 added authentication to /api/pairing/create backend
+- Frontend got 401 Unauthorized when trying to generate pairing PIN
+- Frontend had token but ApiClient didn't send it in Authorization header
+- Root cause: ApiClient only added CSRF token, not JWT Bearer token
+- Solution: Modified ApiClient to store and transmit JWT token
+  1. Added `accessToken` property to ApiClient class
+  2. Added `setAuthToken(token)` method to store token
+  3. Modified request interceptor to add `Authorization: Bearer ${token}` header
+  4. Updated App.tsx `handleLogin` to call `apiClient.setAuthToken(token)`
+  5. Updated App.tsx `handleLogout` to call `apiClient.setAuthToken(null)`
+- Now all API requests include both CSRF token AND JWT Bearer token
+- Pairing PIN generation works again for admin users
+- Frontend properly authenticates with backend endpoints
+- Token management centralized in ApiClient class
+
 ## 1.3.22
 
 - **HOTFIX: Moved authenticate function before first usage**

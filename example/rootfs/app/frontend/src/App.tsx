@@ -123,6 +123,9 @@ const App: React.FC = () => {
     // Disconnect WebSocket first
     disconnect();
 
+    // Clear API client token
+    apiClient.setAuthToken(null);
+
     // Clear WebSocket token
     wsClient.setAuthToken(null);
 
@@ -147,6 +150,9 @@ const App: React.FC = () => {
 
     // Set in app state
     setAuth('', token);
+
+    // Set API client authentication token for all HTTP requests
+    apiClient.setAuthToken(token);
 
     // Set WebSocket authentication token immediately
     wsClient.setAuthToken(token);

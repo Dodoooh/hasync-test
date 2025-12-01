@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.22** - Fixed authenticate function order (HOTFIX)
+✅ **WORKING v1.3.23** - Fixed frontend JWT token transmission for pairing endpoint
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
