@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.14';
+const VERSION = '1.3.15';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -134,29 +134,19 @@ if (tlsOptions.enabled) {
 const io = new SocketIOServer(mainServer, {
   cors: {
     origin: (origin, callback) => {
-      // SECURITY: Only allow requests without Origin header from localhost or trusted tools
-      // This prevents bypassing CORS by omitting the Origin header
+      // Allow requests without origin (native mobile apps, Postman, etc.)
       if (!origin) {
-        const referer = callback['req']?.headers?.referer;
-        const host = callback['req']?.headers?.host;
-
-        // Allow only localhost development tools and mobile apps
-        const isLocalhost = host?.includes('localhost') || host?.includes('127.0.0.1');
-        const isTrustedTool = referer === undefined || referer?.includes('localhost');
-
-        if (isLocalhost || isTrustedTool) {
-          callback(null, true);
-          return;
-        }
-
-        // Reject all other requests without Origin header
-        callback(new Error('Origin header required for security'));
+        callback(null, true);
         return;
       }
 
+      // Check if origin is in allowed list
       if (allowedOrigins.includes(origin)) {
+        logger.info(`WebSocket CORS: Allowed origin: ${origin}`);
         callback(null, true);
       } else {
+        logger.warn(`WebSocket CORS: Rejected origin: ${origin}`);
+        logger.info(`Allowed origins: ${allowedOrigins.join(', ')}`);
         callback(new Error('Not allowed by CORS'));
       }
     },

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.15
+
+- **BUGFIX: WebSocket CORS configuration fixed**
+- Fixed: Socket.IO CORS origin callback was accessing non-existent `callback['req']`
+- Problem: CORS check tried to read request headers from wrong object
+- Solution: Simplified CORS origin check to use allowedOrigins array
+- Removed buggy origin header detection code
+- Allow connections without origin (mobile apps, native tools)
+- Added logging for allowed/rejected origins
+- WebSocket connections should now work correctly
+
 ## 1.3.14
 
 - **SWAGGER UI: Improved authentication instructions**
