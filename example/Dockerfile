@@ -135,8 +135,9 @@ RUN /usr/local/bin/node --version && \
 # ------------------------------------------------------------------------------
 RUN mkdir -p /app/frontend/dist \
     /app/backend/src \
+    /app/backups \
     /data && \
-    chmod 755 /data
+    chmod 755 /data /app/backups
 
 # ------------------------------------------------------------------------------
 # Copy Backend Application with Compiled Native Modules
@@ -200,7 +201,7 @@ EXPOSE 8099 5173
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8099/health || exit 1
+    CMD curl -f http://localhost:8099/api/health || exit 1
 
 # Startup
 CMD ["/run.sh"]

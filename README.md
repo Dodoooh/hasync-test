@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.1.7** - DEFINITIVE SOLUTION: Alpine 3.16 musl 1.2.3 compatibility
+✅ **WORKING v1.1.8** - Fixed health check endpoint and backup directory
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

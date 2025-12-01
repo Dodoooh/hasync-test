@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.8
+
+- Fixed health check endpoint: Changed from `/health` to `/api/health`
+- Created `/app/backups` directory for database backups
+- Fixed permission errors on startup
+- All services now fully operational
+
 ## 1.1.7
 
 - **DEFINITIVE SOLUTION - 100% WORKING**

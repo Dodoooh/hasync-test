@@ -1,0 +1,150 @@
+# ==============================================================================
+# TEST DOCKERFILE: Node.js 18 musl-compatible on Alpine 3.15
+# DEFINITIVE SOLUTION using unofficial-builds.nodejs.org
+# ==============================================================================
+
+ARG BUILD_FROM
+ARG NODE_VERSION=18.20.5
+ARG TEMPIO_VERSION
+ARG BUILD_ARCH
+
+# ==============================================================================
+# STAGE 1: Frontend Build Stage
+# ==============================================================================
+FROM node:18-alpine AS frontend-builder
+
+WORKDIR /build/frontend
+COPY rootfs/app/frontend/package*.json ./
+RUN npm install --no-audit --no-fund
+COPY rootfs/app/frontend/tsconfig*.json ./
+COPY rootfs/app/frontend/vite.config.ts ./
+COPY rootfs/app/frontend/src ./src
+COPY rootfs/app/frontend/public ./public
+COPY rootfs/app/frontend/index.html ./
+RUN npm run build
+RUN ls -la dist && echo "Frontend build completed successfully"
+
+# ==============================================================================
+# STAGE 2: Final Runtime Stage with musl-compatible Node.js 18
+# ==============================================================================
+FROM $BUILD_FROM
+
+ARG NODE_VERSION=18.20.5
+ARG TEMPIO_VERSION
+ARG BUILD_ARCH
+
+# ------------------------------------------------------------------------------
+# Install System Dependencies (minimal, no conflicting libraries)
+# ------------------------------------------------------------------------------
+RUN apk add --no-cache \
+    # Build tools for native modules
+    python3 \
+    make \
+    g++ \
+    # Runtime dependencies
+    sqlite \
+    sqlite-libs \
+    curl \
+    bash \
+    wget \
+    # CRITICAL: libstdc++ required for musl Node.js binaries
+    libstdc++ \
+    && rm -rf /var/cache/apk/* /tmp/*
+
+# ------------------------------------------------------------------------------
+# Install Node.js 18 from unofficial-builds.nodejs.org (musl-compatible)
+# ------------------------------------------------------------------------------
+# SOLUTION: Use Node.js unofficial builds compiled against musl libc
+# These binaries are specifically designed for Alpine Linux
+# Download URL: https://unofficial-builds.nodejs.org/download/release/
+ENV NODE_VERSION=${NODE_VERSION}
+
+# Detect architecture and set appropriate binary URL
+RUN ARCH="$(uname -m)" \
+    && case "${ARCH}" in \
+        x86_64) NODE_ARCH="x64" ;; \
+        aarch64) NODE_ARCH="arm64" ;; \
+        armv7l) NODE_ARCH="armv7l" ;; \
+        *) echo "Unsupported architecture: ${ARCH}" && exit 1 ;; \
+    esac \
+    && echo "Installing Node.js ${NODE_VERSION} musl build for ${NODE_ARCH}..." \
+    && wget -q https://unofficial-builds.nodejs.org/download/release/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}-musl.tar.gz \
+    && mkdir -p /opt/nodejs \
+    && tar -xzf node-v${NODE_VERSION}-linux-${NODE_ARCH}-musl.tar.gz -C /opt/nodejs --strip-components=1 \
+    && rm node-v${NODE_VERSION}-linux-${NODE_ARCH}-musl.tar.gz \
+    # Create symlinks for global access
+    && ln -sf /opt/nodejs/bin/node /usr/local/bin/node \
+    && ln -sf /opt/nodejs/bin/npm /usr/local/bin/npm \
+    && ln -sf /opt/nodejs/bin/npx /usr/local/bin/npx \
+    # Verify installation
+    && node --version \
+    && npm --version \
+    && echo "Node.js musl build installed successfully"
+
+# ------------------------------------------------------------------------------
+# Install Tempio (Home Assistant Template Tool)
+# ------------------------------------------------------------------------------
+RUN curl -sSLf -o /usr/bin/tempio \
+    "https://github.com/home-assistant/tempio/releases/download/${TEMPIO_VERSION}/tempio_${BUILD_ARCH}" \
+    && chmod a+x /usr/bin/tempio
+
+# ------------------------------------------------------------------------------
+# Create Application Directory Structure
+# ------------------------------------------------------------------------------
+RUN mkdir -p /app/frontend/dist /app/backend/src /data \
+    && chmod 755 /data
+
+# ------------------------------------------------------------------------------
+# Install Backend Dependencies
+# ------------------------------------------------------------------------------
+WORKDIR /app/backend
+COPY rootfs/app/backend/package*.json ./
+
+RUN npm install --omit=dev --no-audit --no-fund \
+    && npm cache clean --force \
+    # Verify critical native modules
+    && node -e "require('better-sqlite3')" \
+    && node -e "require('bcrypt')" \
+    && echo "Backend dependencies installed successfully"
+
+COPY rootfs/app/backend/src ./src
+
+# ------------------------------------------------------------------------------
+# Install Global Runtime Tools
+# ------------------------------------------------------------------------------
+RUN npm install -g tsx http-server --no-audit --no-fund \
+    && npm cache clean --force \
+    && tsx --version \
+    && http-server --version
+
+# ------------------------------------------------------------------------------
+# Copy Built Frontend from Builder Stage
+# ------------------------------------------------------------------------------
+COPY --from=frontend-builder /build/frontend/dist /app/frontend/dist
+RUN ls -la /app/frontend/dist && echo "Frontend assets copied successfully"
+
+# ------------------------------------------------------------------------------
+# Copy Runtime Scripts and Configuration
+# ------------------------------------------------------------------------------
+COPY rootfs/run.sh /run.sh
+RUN chmod a+x /run.sh
+COPY rootfs/ /
+
+WORKDIR /app
+EXPOSE 8099 5173
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8099/health || exit 1
+
+CMD ["/run.sh"]
+
+# ==============================================================================
+# WHY THIS WORKS:
+# ==============================================================================
+# 1. ✅ Node.js unofficial builds are compiled against musl libc (Alpine native)
+# 2. ✅ No glibc dependency conflicts
+# 3. ✅ No version mismatches between libstdc++/libgcc and other Alpine packages
+# 4. ✅ Only requires libstdc++ from Alpine 3.15 (already compatible)
+# 5. ✅ Works with Node.js 18.x (supports bcrypt@5+, helmet@8, tsx)
+# 6. ✅ Verified to work on Alpine 3.9+ according to Node.js unofficial-builds
+# ==============================================================================
