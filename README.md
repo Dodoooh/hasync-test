@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-🔄 **UPDATE TEST v1.1.2** - Node.js with proper symlinks in single RUN
+🔄 **UPDATE TEST v1.1.3** - Node.js 18+ from Alpine edge (musl-compatible)
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
