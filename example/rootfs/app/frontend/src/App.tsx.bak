@@ -1,0 +1,261 @@
+import React, { useEffect, useState, Suspense, lazy, useCallback } from 'react';
+import Box from '@mui/material/Box';
+import Container from '@mui/material/Container';
+import AppBar from '@mui/material/AppBar';
+import Toolbar from '@mui/material/Toolbar';
+import Typography from '@mui/material/Typography';
+import Tabs from '@mui/material/Tabs';
+import Tab from '@mui/material/Tab';
+import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
+import Drawer from '@mui/material/Drawer';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemButton from '@mui/material/ListItemButton';
+import ListItemIcon from '@mui/material/ListItemIcon';
+import ListItemText from '@mui/material/ListItemText';
+import CircularProgress from '@mui/material/CircularProgress';
+import { useTheme, useMediaQuery } from '@mui/material';
+import MenuIcon from '@mui/icons-material/Menu';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import DevicesIcon from '@mui/icons-material/DevicesOther';
+import GroupIcon from '@mui/icons-material/Group';
+import QrCodeIcon from '@mui/icons-material/QrCode2';
+import LogoutIcon from '@mui/icons-material/Logout';
+import SettingsIcon from '@mui/icons-material/Settings';
+import { useAppStore } from '@/context/AppContext';
+import { useWebSocket } from '@/hooks/useWebSocket';
+import { apiClient } from '@/api/client';
+import { ComponentErrorBoundary } from '@/components/ErrorBoundary';
+
+// Lazy load components for code splitting
+const LoginForm = lazy(() => import('@/components/LoginForm').then(m => ({ default: m.LoginForm })));
+const EntitySelector = lazy(() => import('@/components/EntitySelector').then(m => ({ default: m.EntitySelector })));
+const AreaManager = lazy(() => import('@/components/AreaManager').then(m => ({ default: m.AreaManager })));
+const DashboardConfig = lazy(() => import('@/components/DashboardConfig').then(m => ({ default: m.DashboardConfig })));
+const ClientList = lazy(() => import('@/components/ClientList').then(m => ({ default: m.ClientList })));
+const PairingWizard = lazy(() => import('@/components/PairingWizard').then(m => ({ default: m.PairingWizard })));
+const Settings = lazy(() => import('@/components/Settings').then(m => ({ default: m.Settings })));
+const StatusBar = lazy(() => import('@/components/StatusBar').then(m => ({ default: m.StatusBar })));
+
+// Loading fallback component
+const LoadingFallback: React.FC = () => (
+  <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+    <CircularProgress />
+  </Box>
+);
+
+const navItems = [
+  { label: 'Entities', path: '/entities', icon: <SettingsIcon /> },
+  { label: 'Areas', path: '/areas', icon: <GroupIcon /> },
+  { label: 'Dashboards', path: '/dashboards', icon: <DashboardIcon /> },
+  { label: 'Clients', path: '/clients', icon: <DevicesIcon /> },
+  { label: 'Pairing', path: '/pairing', icon: <QrCodeIcon /> },
+  { label: 'Settings', path: '/settings', icon: <SettingsIcon /> },
+];
+
+const App: React.FC = () => {
+  const { isAuthenticated, setAuth, clearAuth, setEntities, setAreas, setLoading } = useAppStore();
+  const { connect, disconnect } = useWebSocket();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  const [currentTab, setCurrentTab] = useState(0);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Fetch entities and areas when authenticated
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!isAuthenticated) return;
+
+      try {
+        // Fetch entities
+        setLoading('entities', true);
+        const entities = await apiClient.getEntities();
+        setEntities(entities);
+        console.log('Entities fetched successfully:', entities.length);
+
+        // Fetch areas
+        const areas = await apiClient.getAreas();
+        setAreas(areas);
+        console.log('Areas fetched successfully:', areas.length);
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+      } finally {
+        setLoading('entities', false);
+      }
+    };
+
+    fetchData();
+  }, [isAuthenticated, setEntities, setAreas, setLoading]);
+
+  // Connect WebSocket when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      connect();
+    }
+
+    return () => {
+      disconnect();
+    };
+  }, [isAuthenticated, connect, disconnect]);
+
+  const handleLogout = useCallback(() => {
+    clearAuth();
+    disconnect();
+  }, [clearAuth, disconnect]);
+
+  const handleTabChange = useCallback((_event: React.SyntheticEvent, newValue: number) => {
+    setCurrentTab(newValue);
+    if (isMobile) {
+      setDrawerOpen(false);
+    }
+  }, [isMobile]);
+
+  const handleLogin = useCallback((token: string) => {
+    setAuth('', token);
+  }, [setAuth]);
+
+  if (!isAuthenticated) {
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <LoginForm onLogin={handleLogin} />
+      </Suspense>
+    );
+  }
+
+  const Navigation = () => (
+    <>
+      {isMobile ? (
+        <Drawer
+          anchor="left"
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+        >
+          <Box sx={{ width: 250 }} role="presentation">
+            <List>
+              {navItems.map((item, index) => (
+                <ListItem key={item.path} disablePadding>
+                  <ListItemButton
+                    selected={currentTab === index}
+                    onClick={() => handleTabChange({} as any, index)}
+                  >
+                    <ListItemIcon>{item.icon}</ListItemIcon>
+                    <ListItemText primary={item.label} />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          </Box>
+        </Drawer>
+      ) : (
+        <Tabs
+          value={currentTab}
+          onChange={handleTabChange}
+          sx={{ flexGrow: 1 }}
+          textColor="inherit"
+        >
+          {navItems.map((item) => (
+            <Tab key={item.path} label={item.label} icon={item.icon} iconPosition="start" />
+          ))}
+        </Tabs>
+      )}
+    </>
+  );
+
+  const renderContent = useCallback(() => {
+    const content = (() => {
+      switch (currentTab) {
+        case 0:
+          return (
+            <ComponentErrorBoundary componentName="Entity Selector">
+              <EntitySelector title="All Entities" />
+            </ComponentErrorBoundary>
+          );
+        case 1:
+          return (
+            <ComponentErrorBoundary componentName="Area Manager">
+              <AreaManager />
+            </ComponentErrorBoundary>
+          );
+        case 2:
+          return (
+            <ComponentErrorBoundary componentName="Dashboard Config">
+              <DashboardConfig />
+            </ComponentErrorBoundary>
+          );
+        case 3:
+          return (
+            <ComponentErrorBoundary componentName="Client List">
+              <ClientList />
+            </ComponentErrorBoundary>
+          );
+        case 4:
+          return (
+            <ComponentErrorBoundary componentName="Pairing Wizard">
+              <PairingWizard />
+            </ComponentErrorBoundary>
+          );
+        case 5:
+          return (
+            <ComponentErrorBoundary componentName="Settings">
+              <Settings />
+            </ComponentErrorBoundary>
+          );
+        default:
+          return (
+            <ComponentErrorBoundary componentName="Entity Selector">
+              <EntitySelector title="All Entities" />
+            </ComponentErrorBoundary>
+          );
+      }
+    })();
+
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        {content}
+      </Suspense>
+    );
+  }, [currentTab]);
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <AppBar position="static" elevation={0}>
+        <Toolbar>
+          {isMobile && (
+            <IconButton
+              edge="start"
+              color="inherit"
+              onClick={() => setDrawerOpen(true)}
+              sx={{ mr: 2 }}
+            >
+              <MenuIcon />
+            </IconButton>
+          )}
+          <Typography variant="h6" component="div" sx={{ mr: 2, fontWeight: 700 }}>
+            HAsync
+          </Typography>
+          <Navigation />
+          <Button
+            color="inherit"
+            startIcon={<LogoutIcon />}
+            onClick={handleLogout}
+            sx={{ ml: 'auto' }}
+          >
+            Logout
+          </Button>
+        </Toolbar>
+      </AppBar>
+
+      <Suspense fallback={null}>
+        <StatusBar />
+      </Suspense>
+
+      <Container maxWidth="xl" sx={{ mt: 4, mb: 4, flexGrow: 1 }}>
+        {renderContent()}
+      </Container>
+    </Box>
+  );
+};
+
+export default App;

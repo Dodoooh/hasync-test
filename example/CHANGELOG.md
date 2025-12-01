@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.0.5
+
+- Integrated complete HAsync application
+- Added backend API server (Express + TypeScript)
+- Added frontend web interface (React + Vite)
+- Configured ports 8099 (backend) and 5173 (frontend)
+- Added HAsync configuration options (JWT secret, database, logging, rate limiting)
+- Added health check endpoint
+- Frontend build process integrated into Dockerfile
+
+## 1.0.4
+
+- Removed old example service scripts
+- Fixed restart loop issue
+- Cleaned up rootfs structure
+
+## 1.0.3
+
+- Added HAsync run.sh startup script
+- Configured proper service management
+
+## 1.0.2
+
+- Removed pre-built image reference to force local builds
+- Fixed Docker installation errors
+
 ## 1.0.1
 
 - Updated Dockerfile with Node.js and TypeScript support

@@ -1,0 +1,39 @@
+# Add imports after existing imports
+/^import YAML from 'yaml';$/a\
+import csrf from 'csurf';\
+import cookieParser from 'cookie-parser';
+
+# Add cookieParser and CSRF protection after app.use(express.json())
+/^app\.use\(express\.json\(\)\);$/a\
+app.use(cookieParser());\
+\
+// CSRF Protection\
+const csrfProtection = csrf({\
+  cookie: {\
+    httpOnly: true,\
+    secure: process.env.NODE_ENV === 'production',\
+    sameSite: 'strict'\
+  }\
+});
+
+# Add CSRF token endpoint before health check
+/^\/\/ Health check endpoint$/i\
+// CSRF Token endpoint - must be called before any state-changing operations\
+app.get('/api/csrf-token', csrfProtection, (req, res) => {\
+  res.json({ csrfToken: req.csrfToken() });\
+});\
+\
+
+# Add X-CSRF-Token to allowedHeaders in both CORS configs
+s/allowedHeaders: \['Content-Type', 'Authorization'\]/allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token']/g
+
+# Add csrfProtection to state-changing endpoints
+s/^app\.post\('\/api\/pairing\/create',/app.post('\/api\/pairing\/create', csrfProtection,/
+s/^app\.post\('\/api\/areas',/app.post('\/api\/areas', csrfProtection,/
+s/^app\.put\('\/api\/areas\/:id',/app.put('\/api\/areas\/:id', csrfProtection,/
+s/^app\.patch\('\/api\/areas\/:id', \(req,/app.patch('\/api\/areas\/:id', csrfProtection, (req,/
+s/^app\.patch\('\/api\/areas\/:id\/toggle',/app.patch('\/api\/areas\/:id\/toggle', csrfProtection,/
+s/^app\.patch\('\/api\/areas\/:id\/reorder',/app.patch('\/api\/areas\/:id\/reorder', csrfProtection,/
+s/^app\.delete\('\/api\/areas\/:id',/app.delete('\/api\/areas\/:id', csrfProtection,/
+s/^app\.post\('\/api\/auth\/login',/app.post('\/api\/auth\/login', csrfProtection,/
+s/^app\.post\('\/api\/config\/ha',/app.post('\/api\/config\/ha', csrfProtection,/

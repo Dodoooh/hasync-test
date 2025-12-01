@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-🔄 **UPDATE TEST v1.0.4** - Removed old example services
+🔄 **UPDATE TEST v1.0.5** - Complete HAsync application integrated
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

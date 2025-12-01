@@ -1,0 +1,1532 @@
+/**
+ * Simplified APP01 Backend Server
+ * Quick start version for testing
+ */
+
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import { createServer } from 'http';
+import { createServer as createHttpsServer } from 'https';
+import { Server as SocketIOServer } from 'socket.io';
+import Database from 'better-sqlite3';
+import { join } from 'path';
+import { readFileSync, existsSync } from 'fs';
+import csrf from 'csurf';
+import cookieParser from 'cookie-parser';
+import swaggerUi from 'swagger-ui-express';
+import YAML from 'yaml';
+import jwt from 'jsonwebtoken';
+import {
+  getTLSOptionsFromEnv,
+  loadTLSCertificates,
+  createHTTPSOptions,
+  validateTLSConfig
+} from './config/tls';
+import { httpsRedirect, securityHeaders } from './middleware/https-redirect';
+import { socketAuthMiddleware } from './middleware/socketAuth';
+import {
+  validateSubscribe,
+  validateEntityUpdate,
+  validatePairing,
+  validateConfigUpdate,
+  validateRoomName,
+} from './utils/socketValidation';
+import {
+  setDatabasePermissions,
+  configureDatabaseSecurity,
+  InputSanitizer,
+  createDatabaseBackup,
+  cleanOldBackups
+} from './utils/database-security';
+import {
+  errorHandler,
+  notFoundHandler,
+  asyncHandler,
+  setupUnhandledRejectionHandler,
+  setupUncaughtExceptionHandler
+} from './middleware/errorHandler';
+import {
+  NotFoundError,
+  ValidationError,
+  ServiceUnavailableError
+} from './errors/AppError';
+import { createLogger } from './utils/logger';
+import { createAdminRouter } from './routes/admin';
+import { createRequestLoggerMiddleware } from './middleware/requestLogger';
+
+// Initialize logger
+const logger = createLogger('Server');
+
+// Setup global error handlers
+setupUnhandledRejectionHandler();
+setupUncaughtExceptionHandler();
+
+// Load TLS configuration
+const tlsOptions = getTLSOptionsFromEnv();
+validateTLSConfig(tlsOptions);
+
+const DATABASE_PATH = process.env.DATABASE_PATH || '/data/app01.db';
+// JWT Configuration
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const JWT_EXPIRATION = process.env.JWT_EXPIRATION || '24h';
+
+if (JWT_SECRET === 'change-this-in-production-use-long-random-string' && process.env.NODE_ENV === 'production') {
+  logger.warn('⚠ WARNING: Using default JWT_SECRET in production. Set JWT_SECRET environment variable!');
+}
+
+
+// CORS configuration - restrictive whitelist approach - support both HTTP and HTTPS
+const httpOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'];
+const allowedOrigins = [
+  ...httpOrigins,
+  ...httpOrigins.map(origin => origin.replace('http://', 'https://')),
+  'http://localhost:3000', // Explicitly allow frontend
+  'https://localhost:3000'
+];
+
+const app = express();
+
+// Create HTTP server (for redirect) and HTTPS server based on TLS configuration
+let mainServer: any;
+let httpRedirectServer: any;
+
+if (tlsOptions.enabled) {
+  const tlsConfig = loadTLSCertificates(tlsOptions);
+  const httpsOptions = createHTTPSOptions(tlsConfig!);
+  mainServer = createHttpsServer(httpsOptions, app);
+
+  // Create HTTP redirect server if enabled
+  if (tlsOptions.redirectHttp) {
+    const redirectApp = express();
+    redirectApp.use(httpsRedirect({
+      enabled: true,
+      httpsPort: tlsOptions.port,
+      excludePaths: ['/api/health']
+    }));
+    httpRedirectServer = createServer(redirectApp);
+  }
+} else {
+  mainServer = createServer(app);
+}
+
+const io = new SocketIOServer(mainServer, {
+  cors: {
+    origin: (origin, callback) => {
+      // SECURITY: Only allow requests without Origin header from localhost or trusted tools
+      // This prevents bypassing CORS by omitting the Origin header
+      if (!origin) {
+        const referer = callback['req']?.headers?.referer;
+        const host = callback['req']?.headers?.host;
+
+        // Allow only localhost development tools and mobile apps
+        const isLocalhost = host?.includes('localhost') || host?.includes('127.0.0.1');
+        const isTrustedTool = referer === undefined || referer?.includes('localhost');
+
+        if (isLocalhost || isTrustedTool) {
+          callback(null, true);
+          return;
+        }
+
+        // Reject all other requests without Origin header
+        callback(new Error('Origin header required for security'));
+        return;
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    maxAge: 86400 // 24 hours preflight cache
+  }
+});
+
+// Rate limiting configurations
+// Auth endpoints: 100 requests per 15 minutes per IP for development (prevents brute force in production)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Increased for development testing
+  message: {
+    error: 'Too many authentication attempts',
+    message: 'Please try again later. Maximum 5 attempts per 15 minutes.',
+    retryAfter: '15 minutes'
+  },
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many authentication attempts',
+      message: 'Please try again later. Maximum 5 attempts per 15 minutes.',
+      retryAfter: '15 minutes'
+    });
+  }
+});
+
+// Write endpoints: 30 requests per 15 minutes per IP (prevents data abuse)
+const writeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: {
+    error: 'Too many write requests',
+    message: 'Please try again later. Maximum 30 write operations per 15 minutes.',
+    retryAfter: '15 minutes'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many write requests',
+      message: 'Please try again later. Maximum 30 write operations per 15 minutes.',
+      retryAfter: '15 minutes'
+    });
+  }
+});
+
+// Read endpoints: 500 requests per 15 minutes per IP (normal API usage - increased for development)
+const readLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500, // Increased from 100 to 500 for development
+  message: {
+    error: 'Too many requests',
+    message: 'Please try again later. Maximum 500 requests per 15 minutes.',
+    retryAfter: '15 minutes'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Please try again later. Maximum 500 requests per 15 minutes.',
+      retryAfter: '15 minutes'
+    });
+  }
+});
+
+// Security Headers - Must be configured before other middleware
+app.use(helmet({
+  // Content Security Policy - Prevent XSS attacks
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"], // unsafe-inline needed for React in development
+      styleSrc: ["'self'", "'unsafe-inline'"], // unsafe-inline needed for styled-components
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "ws:", "wss:", "http:", "https:"], // WebSocket and API connections
+      fontSrc: ["'self'", "data:"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      frameAncestors: ["'none'"], // Prevent clickjacking
+    },
+  },
+  // HTTP Strict Transport Security - Force HTTPS (31536000 = 1 year)
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  },
+  // X-Frame-Options - Prevent clickjacking (redundant with CSP frameAncestors but kept for older browsers)
+  frameguard: {
+    action: 'deny'
+  },
+  // X-Content-Type-Options - Prevent MIME type sniffing
+  noSniff: true,
+  // Referrer-Policy - Control referrer information
+  referrerPolicy: {
+    policy: 'no-referrer'
+  },
+  // X-DNS-Prefetch-Control - Control DNS prefetching
+  dnsPrefetchControl: {
+    allow: false
+  },
+  // X-Download-Options - Prevent IE from executing downloads
+  ieNoOpen: true,
+  // Permitted Cross Domain Policies
+  permittedCrossDomainPolicies: {
+    permittedPolicies: 'none'
+  }
+}));
+
+// Additional Permissions-Policy header (helmet doesn't have built-in support yet)
+app.use((_req, res, next) => {
+  res.setHeader(
+    'Permissions-Policy',
+    'geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()'
+  );
+  next();
+});
+
+// Middleware - Restrictive CORS configuration
+app.use(cors({
+  origin: (origin, callback) => {
+    // SECURITY: Only allow requests without Origin header from localhost or trusted tools
+    // This prevents bypassing CORS by omitting the Origin header
+    if (!origin) {
+      const referer = callback['req']?.headers?.referer;
+      const host = callback['req']?.headers?.host;
+
+      // Allow only localhost development tools (Postman, curl, etc.) and mobile apps
+      const isLocalhost = host?.includes('localhost') || host?.includes('127.0.0.1');
+      const isTrustedTool = referer === undefined || referer?.includes('localhost');
+
+      if (isLocalhost || isTrustedTool) {
+        callback(null, true);
+        return;
+      }
+
+      // Reject all other requests without Origin header
+      callback(new Error('Origin header required for security'));
+      return;
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'CSRF-Token', 'X-CSRF-Token'],
+  exposedHeaders: ['CSRF-Token'],
+  maxAge: 86400 // 24 hours preflight cache
+}));
+app.use(express.json());
+app.use(cookieParser());
+
+// Add security headers when TLS is enabled
+if (tlsOptions.enabled) {
+  app.use(securityHeaders());
+}
+
+// Comprehensive request logging for debugging CORS and authentication
+app.use(createRequestLoggerMiddleware({ allowedOrigins }));
+
+// CSRF Protection Configuration
+// Cookie-based CSRF tokens (works with CORS and credentials mode)
+// Protects against Cross-Site Request Forgery attacks by requiring a unique token
+// for all state-changing operations (POST, PUT, PATCH, DELETE)
+const csrfProtection = csrf({
+  cookie: {
+    httpOnly: true, // Prevent JavaScript access to cookie
+    secure: tlsOptions.enabled, // Only send over HTTPS when TLS is enabled
+    sameSite: 'strict', // Prevent CSRF by not sending cookie in cross-site requests
+    maxAge: 3600000 // 1 hour token expiration
+  }
+});
+
+// CSRF token endpoint - frontend must call this before making state-changing requests
+// Returns a CSRF token that must be included in X-CSRF-Token or CSRF-Token header
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
+  // @ts-ignore - csurf adds csrfToken method to request
+  res.json({ csrfToken: req.csrfToken() });
+});
+
+// Initialize database with security measures
+let db: any;
+try {
+  // Set secure file permissions BEFORE opening database
+  setDatabasePermissions(DATABASE_PATH);
+
+  db = new Database(DATABASE_PATH);
+  console.log(`✓ Database connected: ${DATABASE_PATH}`);
+
+  // Configure database security settings
+  configureDatabaseSecurity(db);
+
+  // Initialize schema if needed
+  const schemaPath = join(__dirname, 'database', 'schema.sql');
+  if (existsSync(schemaPath)) {
+    try {
+      const schema = readFileSync(schemaPath, 'utf8');
+      db.exec(schema);
+      console.log('✓ Database schema initialized');
+    } catch (error: any) {
+      // Gracefully handle duplicate column errors (schema already exists)
+      if (error.message && error.message.includes('duplicate column')) {
+        console.log('→ Database schema already exists (duplicate column ignored)');
+      } else {
+        // Log other errors but don't crash the server
+        console.error('⚠ Schema initialization warning:', error.message);
+      }
+    }
+  }
+
+  // Run areas migration
+  const areasMigrationPath = join(__dirname, 'database', 'schema-migration-areas.sql');
+  if (existsSync(areasMigrationPath)) {
+    try {
+      const areasMigration = readFileSync(areasMigrationPath, 'utf8');
+      db.exec(areasMigration);
+      console.log('✓ Areas migration applied');
+    } catch (error: any) {
+      // Gracefully handle duplicate column errors (migration already applied)
+      if (error.message && error.message.includes('duplicate column')) {
+        console.log('→ Areas migration already applied (duplicate column ignored)');
+      } else {
+        // Log other errors but don't crash the server
+        console.error('⚠ Migration warning:', error.message);
+      }
+    }
+  }
+
+  // Create initial backup on startup
+  const backupDir = process.env.BACKUP_DIR || join(__dirname, '../../backups');
+  try {
+    createDatabaseBackup(db, backupDir);
+    cleanOldBackups(backupDir, 10);
+  } catch (error) {
+    console.warn('⚠ Failed to create startup backup:', error);
+  }
+} catch (error) {
+  console.error('✗ Database error:', error);
+}
+
+// Swagger API documentation
+try {
+  const swaggerPath = join(__dirname, 'swagger.yaml');
+  if (existsSync(swaggerPath)) {
+    const swaggerDocument = YAML.parse(readFileSync(swaggerPath, 'utf8'));
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
+      customCss: '.swagger-ui .topbar { display: none }',
+      customSiteTitle: 'HAsync API Documentation'
+    }));
+    console.log('✓ Swagger UI available at /api-docs');
+  }
+} catch (error) {
+  console.warn('⚠ Failed to load Swagger documentation:', error);
+}
+
+// Health check endpoint
+app.get('/api/health', (_req, res) => {
+  const health = {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    services: {
+      api: 'running',
+      database: db ? 'connected' : 'disconnected',
+      websocket: 'initializing'
+    },
+    version: '1.0.0'
+  };
+  res.json(health);
+});
+
+// Basic pairing endpoint (renamed to match frontend) - auth limiter for security
+app.post('/api/pairing/create', authLimiter, csrfProtection, (_req, res) => {
+  const pin = Math.floor(100000 + Math.random() * 900000).toString();
+  const sessionId = `pairing_${Date.now()}`;
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+
+  console.log(`Generated pairing session: ${sessionId}, PIN: ${pin}`);
+
+  res.json({
+    id: sessionId,
+    pin,
+    expiresAt,
+    status: 'pending'
+  });
+});
+
+// Get HA config from database
+const getHAConfig = (): { url?: string; token?: string } => {
+  try {
+    if (db) {
+      const config: any = db.prepare('SELECT value FROM configuration WHERE key = ?').get('ha_config');
+
+      if (config && config.value) {
+        const parsed = JSON.parse(config.value);
+        console.log('✓ HA config loaded from database:', { url: parsed.url, hasToken: !!parsed.token });
+        return parsed;
+      }
+    }
+  } catch (error: any) {
+    console.error('✗ Error reading HA config from database:', error.message);
+  }
+
+  // Fallback to env variables
+  const fallback = {
+    url: process.env.HOMEASSISTANT_URL,
+    token: process.env.HOMEASSISTANT_TOKEN
+  };
+
+  if (fallback.url && fallback.token) {
+    console.log('→ Using env fallback config');
+  } else {
+    console.warn('⚠ No HA config found in database or environment');
+  }
+
+  return fallback;
+};
+
+// Get entities - fetch from Home Assistant (NO MOCK DATA)
+app.get('/api/entities', readLimiter, asyncHandler(async (_req: any, res: any) => {
+  const haConfig = getHAConfig();
+  const haUrl = haConfig.url;
+  const haToken = haConfig.token;
+
+  if (!haUrl || !haToken) {
+    throw new ServiceUnavailableError(
+      'Home Assistant',
+      'Please configure Home Assistant URL and token in Settings'
+    );
+  }
+
+  // Fetch real entities from Home Assistant
+  logger.info(`Fetching entities from ${haUrl}/api/states`);
+  const response = await fetch(`${haUrl}/api/states`, {
+    headers: {
+      'Authorization': `Bearer ${haToken}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    throw new ServiceUnavailableError(
+      'Home Assistant API',
+      `${response.status} ${response.statusText}`
+    );
+  }
+
+  const entities = await response.json() as any[];
+  logger.info(`✓ Fetched ${entities.length} entities from Home Assistant`);
+
+  res.json(entities);
+}));
+
+// Get areas - from database with optional enabled filter (SECURE - uses prepared statement)
+app.get('/api/areas', readLimiter, (req, res) => {
+  try {
+    const { enabled } = req.query;
+
+    // ✅ SECURE: Using prepared statement with parameterized query
+    let areas;
+    if (enabled !== undefined) {
+      const enabledValue = enabled === 'true' ? 1 : 0;
+      areas = db.prepare('SELECT * FROM areas WHERE is_enabled = ?').all(enabledValue);
+    } else {
+      areas = db.prepare('SELECT * FROM areas').all();
+    }
+
+    const result = areas.map((area: any) => ({
+      id: area.id,
+      name: area.name,
+      entityIds: area.entity_ids ? JSON.parse(area.entity_ids) : [],
+      isEnabled: area.is_enabled === 1
+    }));
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching areas:', error);
+    res.json([]);
+  }
+});
+
+// Create area (WITH INPUT VALIDATION)
+app.post('/api/areas', writeLimiter, csrfProtection, (req, res) => {
+  try {
+    const { name, entityIds, isEnabled = true } = req.body;
+
+    // ✅ INPUT VALIDATION
+    if (!name || !InputSanitizer.validateAreaName(name)) {
+      return res.status(400).json({
+        error: 'Invalid area name',
+        message: 'Name must be 1-100 characters, alphanumeric with spaces and common punctuation'
+      });
+    }
+
+    if (entityIds && !InputSanitizer.validateEntityIdArray(entityIds)) {
+      return res.status(400).json({
+        error: 'Invalid entity IDs',
+        message: 'Entity IDs must match format: domain.name'
+      });
+    }
+
+    if (!InputSanitizer.validateBoolean(isEnabled)) {
+      return res.status(400).json({
+        error: 'Invalid isEnabled value',
+        message: 'isEnabled must be a boolean'
+      });
+    }
+
+    const id = `area_${Date.now()}`;
+    const sanitizedName = InputSanitizer.sanitizeString(name, 100);
+    const entity_ids_json = JSON.stringify(entityIds || []);
+    const is_enabled = isEnabled ? 1 : 0;
+
+    // ✅ SECURE: Using prepared statement
+    db.prepare('INSERT INTO areas (id, name, entity_ids, is_enabled) VALUES (?, ?, ?, ?)')
+      .run(id, sanitizedName, entity_ids_json, is_enabled);
+
+    res.json({
+      id,
+      name: sanitizedName,
+      entityIds: entityIds || [],
+      isEnabled: isEnabled
+    });
+  } catch (error) {
+    console.error('Error creating area:', error);
+    res.status(500).json({ error: 'Failed to create area' });
+  }
+});
+
+// Update area (WITH INPUT VALIDATION)
+app.put('/api/areas/:id', writeLimiter, csrfProtection, asyncHandler(async (req: any, res: any) => {
+  const { id } = req.params;
+  const { name, entityIds, isEnabled } = req.body;
+
+  // ✅ VALIDATE AREA ID
+  if (!InputSanitizer.validateAreaId(id)) {
+    throw new ValidationError('Area ID must match format: area_timestamp');
+  }
+
+  // Check if area exists - ✅ SECURE: prepared statement
+  const existing = db.prepare('SELECT * FROM areas WHERE id = ?').get(id);
+  if (!existing) {
+    throw new NotFoundError('Area');
+  }
+
+  // ✅ INPUT VALIDATION
+  if (name && !InputSanitizer.validateAreaName(name)) {
+    throw new ValidationError('Name must be 1-100 characters, alphanumeric with spaces and common punctuation');
+  }
+
+  if (entityIds && !InputSanitizer.validateEntityIdArray(entityIds)) {
+    throw new ValidationError('Entity IDs must match format: domain.name');
+  }
+
+  const sanitizedName = name ? InputSanitizer.sanitizeString(name, 100) : (existing as any).name;
+  const entity_ids_json = JSON.stringify(entityIds || []);
+  const is_enabled = isEnabled !== undefined ? (isEnabled ? 1 : 0) : (existing as any).is_enabled;
+
+  // ✅ SECURE: Using prepared statement
+  db.prepare('UPDATE areas SET name = ?, entity_ids = ?, is_enabled = ? WHERE id = ?')
+    .run(sanitizedName, entity_ids_json, is_enabled, id);
+
+  res.json({
+    id,
+    name: sanitizedName,
+    entityIds: entityIds || [],
+    isEnabled: is_enabled === 1
+  });
+}));
+
+// PATCH area - for partial updates (WITH INPUT VALIDATION)
+app.patch('/api/areas/:id', writeLimiter, csrfProtection, (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    // ✅ VALIDATE AREA ID
+    if (!InputSanitizer.validateAreaId(id)) {
+      return res.status(400).json({
+        error: 'Invalid area ID format',
+        message: 'Area ID must match format: area_timestamp'
+      });
+    }
+
+    // Check if area exists - ✅ SECURE: prepared statement
+    const existing: any = db.prepare('SELECT * FROM areas WHERE id = ?').get(id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Area not found' });
+    }
+
+    // Build update query dynamically based on provided fields
+    const updateFields: string[] = [];
+    const updateValues: any[] = [];
+
+    if (updates.name !== undefined) {
+      // ✅ INPUT VALIDATION
+      if (!InputSanitizer.validateAreaName(updates.name)) {
+        return res.status(400).json({
+          error: 'Invalid area name',
+          message: 'Name must be 1-100 characters, alphanumeric with spaces and common punctuation'
+        });
+      }
+      updateFields.push('name = ?');
+      updateValues.push(InputSanitizer.sanitizeString(updates.name, 100));
+    }
+
+    if (updates.entityIds !== undefined) {
+      // ✅ INPUT VALIDATION
+      if (!InputSanitizer.validateEntityIdArray(updates.entityIds)) {
+        return res.status(400).json({
+          error: 'Invalid entity IDs',
+          message: 'Entity IDs must match format: domain.name'
+        });
+      }
+      updateFields.push('entity_ids = ?');
+      updateValues.push(JSON.stringify(updates.entityIds));
+    }
+
+    if (updates.isEnabled !== undefined) {
+      updateFields.push('is_enabled = ?');
+      updateValues.push(updates.isEnabled ? 1 : 0);
+    }
+
+    // If no fields to update, return current area
+    if (updateFields.length === 0) {
+      return res.json({
+        id: existing.id,
+        name: existing.name,
+        entityIds: existing.entity_ids ? JSON.parse(existing.entity_ids) : [],
+        isEnabled: existing.is_enabled === 1
+      });
+    }
+
+    // Add id to values array for WHERE clause
+    updateValues.push(id);
+
+    // ✅ SECURE: Using prepared statement with parameterized values
+    const query = `UPDATE areas SET ${updateFields.join(', ')} WHERE id = ?`;
+    db.prepare(query).run(...updateValues);
+
+    // Fetch and return updated area
+    const updated: any = db.prepare('SELECT * FROM areas WHERE id = ?').get(id);
+    console.log(`✓ Area ${id} updated:`, updates);
+
+    res.json({
+      id: updated.id,
+      name: updated.name,
+      entityIds: updated.entity_ids ? JSON.parse(updated.entity_ids) : [],
+      isEnabled: updated.is_enabled === 1
+    });
+  } catch (error) {
+    console.error('Error patching area:', error);
+    res.status(500).json({ error: 'Failed to update area' });
+  }
+});
+
+// Toggle area enabled/disabled
+app.patch('/api/areas/:id/toggle', writeLimiter, csrfProtection, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { enabled } = req.body;
+
+    // Validate enabled is boolean
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled must be a boolean' });
+    }
+
+    // Check if area exists
+    const existing = db.prepare('SELECT * FROM areas WHERE id = ?').get(id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Area not found' });
+    }
+
+    const is_enabled = enabled ? 1 : 0;
+    db.prepare('UPDATE areas SET is_enabled = ? WHERE id = ?').run(is_enabled, id);
+
+    const updated: any = db.prepare('SELECT * FROM areas WHERE id = ?').get(id);
+    res.json({
+      id: updated.id,
+      name: updated.name,
+      entityIds: updated.entity_ids ? JSON.parse(updated.entity_ids) : [],
+      isEnabled: updated.is_enabled === 1
+    });
+  } catch (error) {
+    console.error('Error toggling area:', error);
+    res.status(500).json({ error: 'Failed to toggle area' });
+  }
+});
+
+// Reorder entities in an area
+app.patch('/api/areas/:id/reorder', writeLimiter, csrfProtection, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { entityIds } = req.body;
+
+    // Validate request body
+    if (!Array.isArray(entityIds)) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'entityIds must be an array'
+      });
+    }
+
+    // Check if area exists
+    const area: any = db.prepare('SELECT * FROM areas WHERE id = ?').get(id);
+    if (!area) {
+      return res.status(404).json({
+        error: 'Area not found',
+        message: `Area with id '${id}' does not exist`
+      });
+    }
+
+    // Get current entity IDs from area
+    const currentEntityIds = area.entity_ids ? JSON.parse(area.entity_ids) : [];
+
+    // Validate that all provided entityIds exist in the area
+    const invalidEntityIds = entityIds.filter((entityId: string) => !currentEntityIds.includes(entityId));
+    if (invalidEntityIds.length > 0) {
+      return res.status(400).json({
+        error: 'Invalid entity IDs',
+        message: `The following entity IDs are not in this area: ${invalidEntityIds.join(', ')}`
+      });
+    }
+
+    // Validate that all current entities are included in the new order
+    const missingEntityIds = currentEntityIds.filter((entityId: string) => !entityIds.includes(entityId));
+    if (missingEntityIds.length > 0) {
+      return res.status(400).json({
+        error: 'Missing entity IDs',
+        message: `The following entity IDs are missing from the new order: ${missingEntityIds.join(', ')}`
+      });
+    }
+
+    // Update area with new entity order
+    const entity_ids_json = JSON.stringify(entityIds);
+    db.prepare('UPDATE areas SET entity_ids = ? WHERE id = ?')
+      .run(entity_ids_json, id);
+
+    // Return updated area
+    const updatedArea: any = db.prepare('SELECT * FROM areas WHERE id = ?').get(id);
+    res.setHeader('Content-Type', 'application/json');
+    res.json({
+      id: updatedArea.id,
+      name: updatedArea.name,
+      entityIds: JSON.parse(updatedArea.entity_ids),
+      isEnabled: updatedArea.is_enabled === 1
+    });
+  } catch (error: any) {
+    console.error('Error reordering entities:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error?.message || 'Failed to reorder entities'
+    });
+  }
+});
+
+// Get entities in an area with details from Home Assistant
+app.get('/api/areas/:id/entities', readLimiter, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if area exists
+    const area: any = db.prepare('SELECT * FROM areas WHERE id = ?').get(id);
+    if (!area) {
+      return res.status(404).json({
+        error: 'Area not found',
+        message: `Area with id '${id}' does not exist`
+      });
+    }
+
+    const entityIds = area.entity_ids ? JSON.parse(area.entity_ids) : [];
+
+    // If no entities, return empty array
+    if (entityIds.length === 0) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.json([]);
+    }
+
+    // Get HA config
+    const haConfig = getHAConfig();
+    const haUrl = haConfig.url;
+    const haToken = haConfig.token;
+
+    if (!haUrl || !haToken) {
+      return res.status(503).json({
+        error: 'Home Assistant not configured',
+        message: 'Please configure Home Assistant URL and token in Settings'
+      });
+    }
+
+    // Fetch all entities from Home Assistant
+    const response = await fetch(`${haUrl}/api/states`, {
+      headers: {
+        'Authorization': `Bearer ${haToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HA API error: ${response.status} ${response.statusText}`);
+    }
+
+    const allEntities = await response.json() as any[];
+
+    // Filter entities to only those in this area and maintain order
+    const orderedEntities = entityIds
+      .map((entityId: string) => allEntities.find((entity: any) => entity.entity_id === entityId))
+      .filter((entity: any) => entity !== undefined);
+
+    res.setHeader('Content-Type', 'application/json');
+    res.json(orderedEntities);
+  } catch (error: any) {
+    console.error('Error fetching area entities:', error);
+    res.status(503).json({
+      error: 'Failed to fetch entities',
+      message: error?.message || 'Unknown error'
+    });
+  }
+});
+
+// Delete area
+app.delete('/api/areas/:id', writeLimiter, csrfProtection, (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if area exists
+    const existing = db.prepare('SELECT * FROM areas WHERE id = ?').get(id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Area not found' });
+    }
+
+    db.prepare('DELETE FROM areas WHERE id = ?').run(id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting area:', error);
+    res.status(500).json({ error: 'Failed to delete area' });
+  }
+});
+
+// Get dashboards
+app.get('/api/dashboards', readLimiter, (_req, res) => {
+  res.json([
+    { dashboard_id: 'default', name: 'Default Dashboard' },
+    { dashboard_id: 'mobile', name: 'Mobile Dashboard' }
+  ]);
+});
+
+// Login endpoint - Fixed admin credentials from env - strict rate limiting for brute force protection
+// Login endpoint - CSRF protection exempted (users need to login first to get CSRF token)
+app.post('/api/auth/login', authLimiter, (req, res) => {
+  const { username, password } = req.body;
+  const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'test123';
+
+  // Only accept configured admin credentials
+  if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    // Generate secure JWT token with user information and role
+      const payload = {
+        username,
+        role: 'admin',
+        iat: Math.floor(Date.now() / 1000)
+      };
+
+      // @ts-ignore - jsonwebtoken types issue with expiresIn
+      const token = jwt.sign(payload, JWT_SECRET, {
+        expiresIn: JWT_EXPIRATION,
+        issuer: 'hasync-backend',
+        audience: 'hasync-client'
+      });
+
+      logger.info(`User logged in: ${username}`);
+    res.json({
+        token,
+        user: {
+          username,
+          role: 'admin'
+        },
+        expiresIn: JWT_EXPIRATION
+      });
+  } else {
+    logger.warn(`Failed login attempt for user: ${username}`);
+      res.status(401).json({ error: 'Invalid credentials. Only admin user is allowed.' });
+  }
+});
+
+// Save HA config endpoint
+app.post('/api/config/ha', writeLimiter, csrfProtection, (req, res) => {
+  try {
+    const { url, token } = req.body;
+    const config = JSON.stringify({ url, token });
+
+    db.prepare('INSERT OR REPLACE INTO configuration (key, value) VALUES (?, ?)')
+      .run('ha_config', config);
+
+    console.log(`✓ HA config saved: ${url}`);
+    res.json({ success: true, message: 'HA configuration saved' });
+  } catch (error) {
+    console.error('Error saving HA config:', error);
+    res.status(500).json({ error: 'Failed to save configuration' });
+  }
+});
+
+// Get HA config endpoint
+app.get('/api/config/ha', readLimiter, (_req, res) => {
+  try {
+    const haConfig = getHAConfig();
+    res.json(haConfig);
+  } catch (error) {
+    console.error('Error reading HA config:', error);
+    res.status(500).json({ error: 'Failed to read configuration' });
+  }
+});
+
+// Verify token - auth limiter to prevent token enumeration
+app.get('/api/auth/verify', authLimiter, (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+
+  if (!token) {
+    return res.status(401).json({
+      valid: false,
+      error: 'No token provided'
+    });
+  }
+
+  try {
+    // Verify JWT signature and expiration
+    const decoded = jwt.verify(token, JWT_SECRET, {
+      issuer: 'hasync-backend',
+      audience: 'hasync-client'
+    }) as { username: string; role: string; iat: number; exp: number };
+
+    logger.info(`Token verified for user: ${decoded.username}`);
+
+    res.json({
+      valid: true,
+      user: {
+        username: decoded.username,
+        role: decoded.role
+      },
+      expiresAt: new Date(decoded.exp * 1000).toISOString()
+    });
+  } catch (error: any) {
+    logger.warn(`Token verification failed: ${error.message}`);
+
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        valid: false,
+        error: 'Token expired',
+        expiredAt: error.expiredAt
+      });
+    } else if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
+        valid: false,
+        error: 'Invalid token signature'
+      });
+    } else {
+      return res.status(401).json({
+        valid: false,
+        error: 'Token validation failed'
+      });
+    }
+  }
+});
+
+// Get clients (fixed to return array instead of object)
+app.get('/api/clients', readLimiter, (_req, res) => {
+  try {
+    if (db) {
+      // ✅ SECURE: Using prepared statement
+      const clients = db.prepare('SELECT * FROM clients WHERE is_active = ?').all(1);
+      res.json(clients || []);
+    } else {
+      res.json([]);
+    }
+  } catch (error) {
+    console.error('Error fetching clients:', error);
+    res.json([]);
+  }
+});
+
+// Admin routes - backup, restore, security management
+app.use('/api/admin', createAdminRouter(db));
+
+// 404 handler (must be before error handler)
+app.use(notFoundHandler);
+
+// Error handler (must be last middleware)
+app.use(errorHandler);
+
+// Socket.IO authentication middleware
+io.use(socketAuthMiddleware);
+
+// Socket.IO connection handling with authentication and validation
+io.on('connection', (socket) => {
+  const user = socket.user;
+
+// GDPR Compliance Endpoints
+
+// Middleware to extract user ID from token
+const authenticate = (req, res, next) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'No token provided'
+    });
+  }
+
+  try {
+    // Verify and decode JWT token
+    const decoded = jwt.verify(token, JWT_SECRET, {
+      issuer: 'hasync-backend',
+      audience: 'hasync-client'
+    }) as { username: string; role: string; iat: number; exp: number };
+
+    // Attach user information to request
+    req.user = {
+      id: decoded.username,
+      username: decoded.username,
+      role: decoded.role
+    };
+    next();
+  } catch (error: any) {
+    logger.warn(`Authentication failed: ${error.message}`);
+
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        error: 'Token expired',
+        message: 'Your session has expired. Please log in again.',
+        expiredAt: error.expiredAt
+      });
+    } else if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
+        error: 'Invalid token signature'
+      });
+    } else {
+      return res.status(401).json({
+        error: 'Authentication failed'
+      });
+    }
+  }
+};
+
+// Data Export - Right to Access (GDPR Article 15)
+app.get('/api/user/data-export', readLimiter, authenticate, (req, res) => {
+  try {
+    // Get user ID from database based on username from JWT
+    const user = db.prepare('SELECT id FROM users WHERE username = ?').get(req.user.username);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const userId = user.id;
+
+    const userData = {
+      user: db.prepare('SELECT id, username, email, role, created_at FROM users WHERE id = ?').get(userId),
+      areas: db.prepare('SELECT * FROM areas WHERE created_by = ?').all(userId),
+      dashboards: db.prepare('SELECT * FROM dashboards WHERE created_by = ?').all(userId),
+      clients: db.prepare('SELECT * FROM clients WHERE created_by = ?').all(userId),
+      consent: db.prepare('SELECT * FROM user_consent WHERE user_id = ?').get(userId),
+      activityLog: db.prepare('SELECT * FROM activity_log WHERE client_id IN (SELECT id FROM clients WHERE created_by = ?) LIMIT 100').all(userId),
+      exportDate: new Date().toISOString(),
+      exportVersion: '1.0.0'
+    };
+
+    console.log(`[GDPR] Data export requested by user: ${userId}`);
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="user-data-${userId}-${Date.now()}.json"`);
+    res.json(userData);
+  } catch (error) {
+    console.error('[GDPR] Data export error:', error);
+    res.status(500).json({ error: 'Failed to export user data', message: error.message });
+  }
+});
+
+// Data Deletion - Right to Erasure (GDPR Article 17)
+app.delete('/api/user/data-delete', writeLimiter, csrfProtection, authenticate, (req, res) => {
+  try {
+    // Get user ID from database based on username from JWT
+    const user = db.prepare('SELECT id FROM users WHERE username = ?').get(req.user.username);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const userId = user.id;
+    const { confirmDelete } = req.body;
+
+    if (confirmDelete !== true) {
+      return res.status(400).json({
+        error: 'Confirmation required',
+        message: 'You must confirm deletion by setting confirmDelete to true'
+      });
+    }
+
+    console.log(`[GDPR] Data deletion requested by user: ${userId}`);
+
+    db.prepare('DELETE FROM activity_log WHERE client_id IN (SELECT id FROM clients WHERE created_by = ?)').run(userId);
+    db.prepare('DELETE FROM areas WHERE created_by = ?').run(userId);
+    db.prepare('DELETE FROM dashboards WHERE created_by = ?').run(userId);
+    db.prepare('DELETE FROM clients WHERE created_by = ?').run(userId);
+    db.prepare('DELETE FROM user_consent WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+
+    console.log(`[GDPR] All data deleted for user: ${userId}`);
+
+    res.json({
+      success: true,
+      message: 'All user data has been permanently deleted',
+      deletedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('[GDPR] Data deletion error:', error);
+    res.status(500).json({ error: 'Failed to delete user data', message: error.message });
+  }
+});
+
+// Get user consent status
+app.get('/api/user/consent', readLimiter, authenticate, (req, res) => {
+  try {
+    // Get user ID from database based on username from JWT
+    const user = db.prepare('SELECT id FROM users WHERE username = ?').get(req.user.username);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const userId = user.id;
+
+    const consent = db.prepare('SELECT * FROM user_consent WHERE user_id = ?').get(userId);
+
+    if (!consent) {
+      return res.json({
+        data_processing: false,
+        analytics: false,
+        marketing: false,
+        consent_date: null
+      });
+    }
+
+    res.json({
+      data_processing: consent.data_processing === 1,
+      analytics: consent.analytics === 1,
+      marketing: consent.marketing === 1,
+      consent_date: consent.consent_date,
+      updated_at: consent.updated_at
+    });
+  } catch (error) {
+    console.error('[GDPR] Get consent error:', error);
+    res.status(500).json({ error: 'Failed to retrieve consent', message: error.message });
+  }
+});
+
+// Update user consent
+app.post('/api/user/consent', writeLimiter, csrfProtection, authenticate, (req, res) => {
+  try {
+    // Get user ID from database based on username from JWT
+    const user = db.prepare('SELECT id FROM users WHERE username = ?').get(req.user.username);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const userId = user.id;
+    const { data_processing, analytics, marketing } = req.body;
+    const ipAddress = req.ip || req.connection?.remoteAddress;
+
+    if (typeof data_processing !== 'boolean' ||
+        typeof analytics !== 'boolean' ||
+        typeof marketing !== 'boolean') {
+      return res.status(400).json({
+        error: 'Invalid consent values',
+        message: 'All consent values must be boolean'
+      });
+    }
+
+    const consentDate = Math.floor(Date.now() / 1000);
+
+    db.prepare(`
+      INSERT INTO user_consent (user_id, data_processing, analytics, marketing, consent_date, ip_address)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        data_processing = excluded.data_processing,
+        analytics = excluded.analytics,
+        marketing = excluded.marketing,
+        consent_date = excluded.consent_date,
+        ip_address = excluded.ip_address,
+        updated_at = strftime('%s', 'now')
+    `).run(
+      userId,
+      data_processing ? 1 : 0,
+      analytics ? 1 : 0,
+      marketing ? 1 : 0,
+      consentDate,
+      ipAddress
+    );
+
+    console.log(`[GDPR] Consent updated for user: ${userId}`);
+
+    res.json({
+      success: true,
+      message: 'Consent preferences updated',
+      consent: {
+        data_processing,
+        analytics,
+        marketing,
+        consent_date: consentDate
+      }
+    });
+  } catch (error) {
+    console.error('[GDPR] Update consent error:', error);
+    res.status(500).json({ error: 'Failed to update consent', message: error.message });
+  }
+});
+
+// Privacy Policy Endpoint
+app.get('/api/privacy-policy', readLimiter, (req, res) => {
+  const privacyPolicy = {
+    version: '1.0.0',
+    lastUpdated: '2024-01-01',
+    policy: {
+      dataController: {
+        name: 'HAsync Application',
+        contact: 'privacy@hasync.app'
+      },
+      dataCollected: [
+        'User account information (username, email)',
+        'Home Assistant configuration data',
+        'Dashboard and area configurations',
+        'Device pairing information',
+        'Activity logs for security purposes'
+      ],
+      purposeOfProcessing: [
+        'Providing Home Assistant management services',
+        'Improving application functionality',
+        'Security and fraud prevention',
+        'Analytics (with consent)'
+      ],
+      dataRetention: {
+        activeUsers: 'Data retained while account is active',
+        deletedAccounts: 'Data permanently deleted within 30 days of account deletion',
+        activityLogs: 'Retained for 90 days for security purposes'
+      },
+      userRights: [
+        'Right to access your data (data export)',
+        'Right to rectification (update your data)',
+        'Right to erasure (delete your account)',
+        'Right to restrict processing',
+        'Right to data portability',
+        'Right to object to processing',
+        'Right to withdraw consent'
+      ],
+      dataSecurity: [
+        'TLS encryption for data in transit',
+        'Access control and authentication',
+        'Regular security updates',
+        'Activity logging and monitoring'
+      ],
+      thirdPartySharing: 'We do not share your data with third parties',
+      cookies: 'We use essential cookies for authentication only',
+      contact: 'For privacy concerns, contact: privacy@hasync.app'
+    }
+  };
+
+  res.json(privacyPolicy);
+});
+
+  console.log(`[WebSocket] User connected: ${user?.username} (${socket.id})`);
+
+  // Track connection for logging
+  const connectionInfo = {
+    socketId: socket.id,
+    username: user?.username,
+    ip: socket.handshake.address,
+    connectedAt: new Date().toISOString(),
+  };
+
+  // Subscribe to real-time updates
+  socket.on('subscribe', (data) => {
+    try {
+      const validated = validateSubscribe(data);
+      const roomName = validateRoomName(validated.type);
+
+      socket.join(roomName);
+      console.log(`[WebSocket] ${user?.username} subscribed to: ${roomName}`);
+
+      socket.emit('subscribed', {
+        type: validated.type,
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      console.error('[WebSocket] Subscribe validation error:', error.message);
+      socket.emit('error', {
+        type: 'VALIDATION_ERROR',
+        message: 'Invalid subscription data',
+        details: error.message,
+      });
+    }
+  });
+
+  // Unsubscribe from updates
+  socket.on('unsubscribe', (data) => {
+    try {
+      const validated = validateSubscribe(data);
+      const roomName = validateRoomName(validated.type);
+
+      socket.leave(roomName);
+      console.log(`[WebSocket] ${user?.username} unsubscribed from: ${roomName}`);
+
+      socket.emit('unsubscribed', {
+        type: validated.type,
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      console.error('[WebSocket] Unsubscribe validation error:', error.message);
+      socket.emit('error', {
+        type: 'VALIDATION_ERROR',
+        message: 'Invalid unsubscribe data',
+        details: error.message,
+      });
+    }
+  });
+
+  // Entity update from client (if needed)
+  socket.on('entity_update', (data) => {
+    try {
+      const validated = validateEntityUpdate(data);
+
+      // Broadcast to all subscribers in the entities room
+      io.to('entities').emit('entity_update', {
+        ...validated,
+        updatedBy: user?.username,
+        timestamp: new Date().toISOString(),
+      });
+
+      console.log(`[WebSocket] Entity update from ${user?.username}:`, validated.entityId);
+    } catch (error: any) {
+      console.error('[WebSocket] Entity update validation error:', error.message);
+      socket.emit('error', {
+        type: 'VALIDATION_ERROR',
+        message: 'Invalid entity update data',
+        details: error.message,
+      });
+    }
+  });
+
+  // Pairing request
+  socket.on('pairing_request', (data) => {
+    try {
+      const validated = validatePairing(data);
+
+      // Only admin can approve pairing
+      if (user?.role !== 'admin') {
+        socket.emit('error', {
+          type: 'UNAUTHORIZED',
+          message: 'Only admin users can approve pairing requests',
+        });
+        return;
+      }
+
+      // Broadcast pairing request
+      io.emit('pairing_request', {
+        ...validated,
+        requestedBy: user?.username,
+        timestamp: new Date().toISOString(),
+      });
+
+      console.log(`[WebSocket] Pairing request from ${user?.username}`);
+    } catch (error: any) {
+      console.error('[WebSocket] Pairing validation error:', error.message);
+      socket.emit('error', {
+        type: 'VALIDATION_ERROR',
+        message: 'Invalid pairing data',
+        details: error.message,
+      });
+    }
+  });
+
+  // Config update notification
+  socket.on('config_update', (data) => {
+    try {
+      const validated = validateConfigUpdate(data);
+
+      // Only admin can update config
+      if (user?.role !== 'admin') {
+        socket.emit('error', {
+          type: 'UNAUTHORIZED',
+          message: 'Only admin users can update configuration',
+        });
+        return;
+      }
+
+      // Broadcast to all clients
+      io.emit('config_update', {
+        ...validated,
+        updatedBy: user?.username,
+        timestamp: new Date().toISOString(),
+      });
+
+      console.log(`[WebSocket] Config update from ${user?.username}:`, validated.key);
+    } catch (error: any) {
+      console.error('[WebSocket] Config update validation error:', error.message);
+      socket.emit('error', {
+        type: 'VALIDATION_ERROR',
+        message: 'Invalid config update data',
+        details: error.message,
+      });
+    }
+  });
+
+  // Heartbeat/ping
+  socket.on('ping', () => {
+    socket.emit('pong', { timestamp: new Date().toISOString() });
+  });
+
+  // Disconnect handler
+  socket.on('disconnect', (reason) => {
+    console.log(`[WebSocket] User disconnected: ${user?.username} (${socket.id}), reason: ${reason}`);
+
+    // Log disconnection
+    const disconnectInfo = {
+      ...connectionInfo,
+      disconnectedAt: new Date().toISOString(),
+      reason,
+    };
+
+    // You could store this in database for audit trail
+    console.log('[WebSocket] Connection info:', disconnectInfo);
+  });
+
+  // Error handler
+  socket.on('error', (error) => {
+    console.error(`[WebSocket] Socket error for ${user?.username}:`, error);
+  });
+});
+
+// Start server
+mainServer.listen(tlsOptions.port, () => {
+  console.log('');
+  console.log('═══════════════════════════════════════════════');
+  console.log('  HAsync Backend Server Started');
+  console.log('═══════════════════════════════════════════════');
+
+  if (tlsOptions.enabled) {
+    console.log(`  Protocol:  HTTPS (TLS ENABLED ✓)`);
+    console.log(`  API:       https://localhost:${tlsOptions.port}/api`);
+    console.log(`  Health:    https://localhost:${tlsOptions.port}/api/health`);
+    console.log(`  WebSocket: wss://localhost:${tlsOptions.port}`);
+    console.log(`  API Docs:  https://localhost:${tlsOptions.port}/api-docs`);
+  } else {
+    console.log(`  Protocol:  HTTP (⚠ INSECURE - Enable TLS!)`);
+    console.log(`  API:       http://localhost:${tlsOptions.port}/api`);
+    console.log(`  Health:    http://localhost:${tlsOptions.port}/api/health`);
+    console.log(`  WebSocket: ws://localhost:${tlsOptions.port}`);
+    console.log(`  API Docs:  http://localhost:${tlsOptions.port}/api-docs`);
+  }
+
+  console.log(`  Database:  ${DATABASE_PATH}`);
+  console.log('═══════════════════════════════════════════════');
+  console.log('');
+});
+
+// Start HTTP redirect server if enabled
+if (httpRedirectServer && tlsOptions.redirectHttp) {
+  httpRedirectServer.listen(tlsOptions.httpPort, () => {
+    console.log(`✓ HTTP redirect server listening on port ${tlsOptions.httpPort}`);
+    console.log(`  HTTP requests will be redirected to HTTPS port ${tlsOptions.port}`);
+    console.log('');
+  });
+}
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, closing servers...');
+  mainServer.close(() => {
+    if (httpRedirectServer) {
+      httpRedirectServer.close(() => {
+        if (db) db.close();
+        process.exit(0);
+      });
+    } else {
+      if (db) db.close();
+      process.exit(0);
+    }
+  });
+});

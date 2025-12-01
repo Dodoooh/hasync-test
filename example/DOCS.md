@@ -1,23 +1,42 @@
 # HAsync - Home Assistant Manager
 
-🔄 **Development Version 1.0.1**
+**Version 1.0.5**
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
-## Current Development Status
+## Features
 
-✅ Step 1: Base structure and naming
-✅ Step 2: Dockerfile updated with Node.js/TypeScript support
-⏳ Step 3: HAsync application will be added next
+- **Client Pairing & Management** - Secure client registration and authentication
+- **Entity Synchronization** - Real-time entity state synchronization across clients
+- **WebSocket Updates** - Live updates via WebSocket connections
+- **Modern React Frontend** - Responsive web interface on port 5173
+- **TypeScript Backend** - Express API server on port 8099
+- **SQLite Database** - Persistent storage for clients and entity mappings
+
+## Configuration
+
+After installation, configure the addon with these options:
+
+- **jwt_secret** - Secret key for JWT token generation (change in production!)
+- **database_path** - Path to SQLite database file (default: /data/hasync.db)
+- **log_level** - Logging level: debug, info, warn, or error
+- **max_clients** - Maximum number of connected clients (1-1000)
+- **rate_limit** - API rate limit requests per minute (100-10000)
 
 ## How to use
 
-This addon is currently in development. Once complete, it will provide:
+1. Install and start the addon
+2. Access the web interface at http://[HOST]:5173
+3. Configure your JWT secret for production use
+4. Pair clients using the pairing interface
+5. Configure entity synchronization between clients
 
-- Client pairing and management
-- Entity synchronization
-- Real-time updates via WebSocket
-- Modern React frontend
-- TypeScript backend with Express
+## API Endpoints
 
-Stay tuned for updates!
+- Backend API: `http://[HOST]:8099`
+- Frontend UI: `http://[HOST]:5173`
+- Health check: `http://[HOST]:8099/health`
+
+## Support
+
+For issues and questions, visit the [GitHub repository](https://github.com/Dodoooh/hasync-test)

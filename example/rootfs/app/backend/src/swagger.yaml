@@ -1,0 +1,855 @@
+openapi: 3.0.3
+info:
+  title: HAsync Backend API
+  description: |
+    RESTful API for HAsync Home Assistant client pairing and management.
+
+    ## Authentication
+    This API uses a dual-layer security model:
+
+    ### 1. JWT Authentication (Primary)
+    All authenticated endpoints require a JWT access token:
+    - **Header**: `Authorization: Bearer <access-token>`
+    - **Token Lifetime**: 15 minutes
+    - **Refresh**: Use `/api/auth/refresh` with refresh token (7 days)
+
+    ### 2. CSRF Protection (State-Changing Operations)
+    All POST/PUT/PATCH/DELETE requests require CSRF token:
+    - **Header**: `X-CSRF-Token: <csrf-token>`
+    - **Cookie**: `_csrf=<csrf-token>` (httpOnly, secure, sameSite=strict)
+    - **Obtain**: GET `/api/csrf-token`
+
+    ### 3. Client Certificate (Device Pairing)
+    Paired devices use certificate-based authentication:
+    - `X-Client-ID`: Your client ID received during pairing
+    - `X-Client-Certificate`: Your client certificate received during pairing
+
+    ### Authentication Flow
+    1. Fetch CSRF token: `GET /api/csrf-token`
+    2. Login: `POST /api/auth/login` with username/password + CSRF token
+    3. Receive: Access token (15min) + Refresh token (7d)
+    4. Use access token in `Authorization` header for all requests
+    5. Include CSRF token in all state-changing requests
+    6. Refresh when access token expires: `POST /api/auth/refresh`
+
+  version: 2.0.0
+  contact:
+    name: HAsync Support
+
+servers:
+  - url: http://localhost:3000/api
+    description: Development server
+  - url: http://supervisor/core/api
+    description: Home Assistant Add-on
+
+tags:
+  - name: Health
+    description: System health and status
+  - name: Authentication
+    description: JWT-based user authentication and token management
+  - name: Security
+    description: CSRF protection and security tokens
+  - name: Pairing
+    description: Client device pairing and certificate exchange
+  - name: Clients
+    description: Client management
+  - name: Home Assistant
+    description: Home Assistant proxy endpoints
+  - name: Areas
+    description: Area management and entity ordering
+
+paths:
+  /csrf-token:
+    get:
+      tags: [Security]
+      summary: Get CSRF token
+      description: |
+        Generates a CSRF token for use in state-changing requests (POST/PUT/PATCH/DELETE).
+        The token is returned in both the response body and as an httpOnly cookie.
+
+        **Security Features:**
+        - Cookie: httpOnly, secure (production), sameSite=strict
+        - Double-submit cookie pattern
+        - Required for all mutations
+
+      responses:
+        '200':
+          description: CSRF token generated successfully
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: _csrf=7xYz9AbC-dEfG2HiJ3kLmN4oPqR5sTuV6wXy; HttpOnly; Secure; SameSite=Strict
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  csrfToken:
+                    type: string
+                    example: 7xYz9AbC-dEfG2HiJ3kLmN4oPqR5sTuV6wXy
+                    description: CSRF token to include in X-CSRF-Token header
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: User login
+      description: |
+        Authenticate user with username and password.
+        Returns JWT access token (15min) and refresh token (7 days).
+
+        **Security:**
+        - Passwords verified with bcrypt (12 rounds)
+        - Rate limited: 5 attempts per 15 minutes per IP
+        - CSRF protection enabled
+        - Returns generic error messages (prevents user enumeration)
+
+      security:
+        - CsrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  example: admin
+                password:
+                  type: string
+                  format: password
+                  example: your-secure-password
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: JWT access token (valid for 15 minutes)
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  refreshToken:
+                    type: string
+                    description: JWT refresh token (valid for 7 days)
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  user:
+                    type: object
+                    properties:
+                      username:
+                        type: string
+                        example: admin
+                      role:
+                        type: string
+                        example: admin
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Invalid username or password
+        '403':
+          description: CSRF token validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsrfError'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Too many login attempts, please try again later
+
+  /auth/verify:
+    get:
+      tags: [Authentication]
+      summary: Verify JWT token
+      description: |
+        Verify the validity of a JWT access token.
+        Returns user information if token is valid.
+
+        **Use Cases:**
+        - Check if user is still authenticated
+        - Validate token before making requests
+        - Get current user information
+
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                    example: true
+                  user:
+                    type: object
+                    properties:
+                      username:
+                        type: string
+                        example: admin
+                      role:
+                        type: string
+                        example: admin
+        '401':
+          description: Token invalid or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                no_token:
+                  value:
+                    error: No token provided
+                invalid_token:
+                  value:
+                    error: Invalid token
+                expired_token:
+                  value:
+                    error: Token expired
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refresh access token
+      description: |
+        Exchange a valid refresh token for a new access token.
+        Use this when the access token expires (after 15 minutes).
+
+        **Flow:**
+        1. Access token expires (401 error)
+        2. Send refresh token to this endpoint
+        3. Receive new access token
+        4. Retry original request with new token
+
+        **Security:**
+        - Rate limited: 10 attempts per 15 minutes
+        - CSRF protection enabled
+        - Refresh tokens stored in database (hashed)
+
+      security:
+        - CsrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshToken
+              properties:
+                refreshToken:
+                  type: string
+                  description: Valid refresh token from login response
+                  example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      responses:
+        '200':
+          description: Access token refreshed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: New JWT access token (valid for 15 minutes)
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        '400':
+          description: Refresh token missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Refresh token required
+        '401':
+          description: Refresh token invalid or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid:
+                  value:
+                    error: Invalid refresh token
+                expired:
+                  value:
+                    error: Refresh token expired
+        '403':
+          description: CSRF token validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsrfError'
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Basic health check
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /health/detailed:
+    get:
+      tags: [Health]
+      summary: Detailed health check
+      responses:
+        '200':
+          description: Detailed health information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailedHealthResponse'
+
+  /pairing/pin:
+    get:
+      tags: [Pairing]
+      summary: Generate pairing PIN
+      description: Generate a 6-digit PIN for client pairing (valid for 5 minutes)
+      responses:
+        '200':
+          description: PIN generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PinResponse'
+
+  /pairing/complete:
+    post:
+      tags: [Pairing]
+      summary: Complete pairing
+      description: Complete the pairing process with PIN and client public key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PairingRequest'
+      responses:
+        '201':
+          description: Pairing completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PairingResponse'
+        '400':
+          description: Invalid request or expired PIN
+
+  /clients:
+    get:
+      tags: [Clients]
+      summary: List all clients
+      parameters:
+        - name: active
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of clients
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientsListResponse'
+
+  /clients/{id}:
+    get:
+      tags: [Clients]
+      summary: Get client by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Client details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientResponse'
+        '404':
+          description: Client not found
+
+    delete:
+      tags: [Clients]
+      summary: Delete client
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Client deleted
+        '404':
+          description: Client not found
+
+  /clients/{id}/revoke:
+    post:
+      tags: [Clients]
+      summary: Revoke client access
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Client access revoked
+        '404':
+          description: Client not found
+
+  /ha/states:
+    get:
+      tags: [Home Assistant]
+      summary: Get all entity states
+      security:
+        - ClientAuth: []
+      responses:
+        '200':
+          description: List of all entity states
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatesResponse'
+
+  /ha/states/{entity_id}:
+    get:
+      tags: [Home Assistant]
+      summary: Get entity state
+      security:
+        - ClientAuth: []
+      parameters:
+        - name: entity_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: light.living_room
+      responses:
+        '200':
+          description: Entity state
+
+  /ha/areas:
+    get:
+      tags: [Home Assistant]
+      summary: Get all areas
+      security:
+        - ClientAuth: []
+      responses:
+        '200':
+          description: List of areas
+
+  /ha/areas/{area_id}/entities:
+    get:
+      tags: [Home Assistant]
+      summary: Get entities in area
+      security:
+        - ClientAuth: []
+      parameters:
+        - name: area_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of entities in area
+
+  /ha/dashboards:
+    get:
+      tags: [Home Assistant]
+      summary: Get all dashboards
+      security:
+        - ClientAuth: []
+      responses:
+        '200':
+          description: List of dashboards
+
+  /ha/services/call:
+    post:
+      tags: [Home Assistant]
+      summary: Call Home Assistant service
+      security:
+        - ClientAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceCallRequest'
+      responses:
+        '200':
+          description: Service called successfully
+
+  /areas/{id}/reorder:
+    patch:
+      tags: [Areas]
+      summary: Reorder entities in an area
+      description: Update the order of entities within a specific area
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Area ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - entityIds
+              properties:
+                entityIds:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of entity IDs in the desired order
+                  example: ["light.living_room", "switch.fan", "sensor.temperature"]
+      responses:
+        '200':
+          description: Entities reordered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  entityIds:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Invalid request - missing entities or invalid entity IDs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        '404':
+          description: Area not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        '500':
+          description: Internal server error
+
+  /areas/{id}/entities:
+    get:
+      tags: [Areas]
+      summary: Get entities in an area with details
+      description: Retrieve all entities in the specified area with full details from Home Assistant, maintaining the stored order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Area ID
+      responses:
+        '200':
+          description: List of entities in the stored order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HAEntity'
+        '404':
+          description: Area not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        '503':
+          description: Home Assistant not configured or unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token authentication.
+        Include token in Authorization header: `Bearer <token>`
+
+        **Token Lifetime**: 15 minutes
+        **Refresh**: Use `/api/auth/refresh` endpoint
+
+    CsrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: |
+        CSRF token for state-changing operations (POST/PUT/PATCH/DELETE).
+
+        **How to use:**
+        1. GET `/api/csrf-token` to obtain token
+        2. Include token in `X-CSRF-Token` header
+        3. Cookie `_csrf` automatically included by browser
+
+    ClientAuth:
+      type: apiKey
+      in: header
+      name: X-Client-ID
+      description: |
+        Client device authentication using ID and certificate headers.
+
+        **Required Headers:**
+        - `X-Client-ID`: Client UUID
+        - `X-Client-Certificate`: Client certificate hash
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code (optional)
+        details:
+          type: object
+          description: Additional error details (optional)
+
+    CsrfError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: CSRF token validation failed
+        code:
+          type: string
+          example: EBADCSRFTOKEN
+
+    ApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+        error:
+          type: string
+        timestamp:
+          type: integer
+
+    HealthResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                status:
+                  type: string
+                uptime:
+                  type: number
+
+    DetailedHealthResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                status:
+                  type: string
+                components:
+                  type: object
+                  properties:
+                    database:
+                      type: string
+                    homeAssistant:
+                      type: string
+
+    PinResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                pin:
+                  type: string
+                  example: "123456"
+                expires_at:
+                  type: integer
+                expires_in:
+                  type: integer
+
+    PairingRequest:
+      type: object
+      required:
+        - pin
+        - device_name
+        - device_type
+        - public_key
+      properties:
+        pin:
+          type: string
+          example: "123456"
+        device_name:
+          type: string
+          example: "My Phone"
+        device_type:
+          type: string
+          example: "ios"
+        public_key:
+          type: string
+
+    PairingResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                client_id:
+                  type: string
+                certificate:
+                  type: string
+                paired_at:
+                  type: integer
+
+    ClientsListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Client'
+
+    ClientResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Client'
+
+    Client:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        device_type:
+          type: string
+        public_key:
+          type: string
+        certificate:
+          type: string
+        paired_at:
+          type: integer
+        last_seen:
+          type: integer
+        is_active:
+          type: boolean
+        metadata:
+          type: object
+
+    StatesResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/HAEntity'
+
+    HAEntity:
+      type: object
+      properties:
+        entity_id:
+          type: string
+        state:
+          type: string
+        attributes:
+          type: object
+        last_changed:
+          type: string
+        last_updated:
+          type: string
+
+    ServiceCallRequest:
+      type: object
+      required:
+        - domain
+        - service
+      properties:
+        domain:
+          type: string
+          example: "light"
+        service:
+          type: string
+          example: "turn_on"
+        service_data:
+          type: object
+        target:
+          type: object

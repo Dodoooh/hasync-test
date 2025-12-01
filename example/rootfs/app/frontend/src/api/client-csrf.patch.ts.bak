@@ -1,0 +1,62 @@
+// Add CSRF token management to existing ApiClient class
+private csrfToken: string | null = null;
+
+// Add method to fetch CSRF token
+private async fetchCsrfToken(): Promise<void> {
+  try {
+    const response = await axios.get(`${this.baseURL}/csrf-token`, {
+      withCredentials: true,
+    });
+    this.csrfToken = response.data.csrfToken;
+  } catch (error) {
+    console.error('Failed to fetch CSRF token:', error);
+    this.csrfToken = null;
+  }
+}
+
+// Initialize CSRF token on app start
+private async initializeCsrfToken(): Promise<void> {
+  await this.fetchCsrfToken();
+}
+
+// Modify request interceptor to include CSRF token
+// In constructor, update the request interceptor:
+this.instance.interceptors.request.use(
+  async (config) => {
+    // Add CSRF token for state-changing requests
+    if (['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase() || '')) {
+      if (!this.csrfToken) {
+        await this.fetchCsrfToken();
+      }
+      if (this.csrfToken) {
+        config.headers['X-CSRF-Token'] = this.csrfToken;
+      }
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Modify response interceptor to handle CSRF errors
+this.instance.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError<ApiError>) => {
+    // Handle CSRF token errors
+    if (error.response?.status === 403 && error.response?.data?.code === 'EBADCSRFTOKEN') {
+      // Token invalid or expired, fetch new token and retry
+      this.csrfToken = null;
+      await this.fetchCsrfToken();
+
+      // Retry the original request
+      if (error.config) {
+        error.config.headers['X-CSRF-Token'] = this.csrfToken || '';
+        return this.instance.request(error.config);
+      }
+    }
+
+    // ... existing error handling ...
+  }
+);
+
+// Call initializeCsrfToken() in constructor
+this.initializeCsrfToken();
