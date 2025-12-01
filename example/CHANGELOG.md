@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.13
+
+- **BUGFIX: WebSocket connection to correct port**
+- Fixed: WebSocket now connects to backend port 8099 (not frontend port 5173)
+- Problem: WebSocket tried to connect to `ws://host:5173/socket.io/` (frontend)
+- Solution: Changed to `ws://host:8099/socket.io/` (backend)
+- websocket.ts: Use `window.location.hostname:8099` for WebSocket URL
+- No more "websocket error" in browser console and header
+- WebSocket connections now work correctly through http-server proxy
+
 ## 1.3.12
 
 - **UI IMPROVEMENTS: Version display and dashboard icons**

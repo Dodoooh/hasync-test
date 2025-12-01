@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.12** - Dynamic version display + Dashboard icons for Areas
+✅ **WORKING v1.3.13** - Fixed WebSocket connection to correct backend port
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

@@ -53,8 +53,8 @@ class WebSocketClient {
 
     console.log('Connecting to WebSocket with authentication token...');
 
-    // Use relative path for Vite proxy, or explicit URL if provided
-    const socketUrl = url || '/';
+    // WebSocket must connect directly to backend port 8099 (not proxied through frontend port 5173)
+    const socketUrl = url || `${window.location.protocol}//${window.location.hostname}:8099`;
 
     this.socket = io(socketUrl, {
       path: '/socket.io',
