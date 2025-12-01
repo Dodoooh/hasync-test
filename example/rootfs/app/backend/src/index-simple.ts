@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.7';
+const VERSION = '1.3.8';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -335,7 +335,7 @@ app.use(createRequestLoggerMiddleware({ allowedOrigins }));
 // Cookie-based CSRF tokens (works with CORS and credentials mode)
 // Protects against Cross-Site Request Forgery attacks by requiring a unique token
 // for all state-changing operations (POST, PUT, PATCH, DELETE)
-const csrfProtection = csrf({
+const csrfMiddleware = csrf({
   cookie: {
     httpOnly: true, // Prevent JavaScript access to cookie
     secure: false, // Allow over HTTP for Home Assistant addon (internal network)
@@ -344,9 +344,26 @@ const csrfProtection = csrf({
   }
 });
 
+// Conditional CSRF protection: Skip CSRF for JWT-authenticated requests (API clients)
+// Use CSRF only for cookie-based auth (web forms)
+const csrfProtection = (req: any, res: any, next: any) => {
+  // Skip CSRF if using Bearer token (JWT authentication)
+  const authHeader = req.get('authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    logger.info('Skipping CSRF for JWT-authenticated request', {
+      method: req.method,
+      path: req.path
+    });
+    return next();
+  }
+
+  // Use CSRF for cookie-based auth
+  csrfMiddleware(req, res, next);
+};
+
 // CSRF token endpoint - frontend must call this before making state-changing requests
 // Returns a CSRF token that must be included in X-CSRF-Token or CSRF-Token header
-app.get('/api/csrf-token', csrfProtection, (req, res) => {
+app.get('/api/csrf-token', csrfMiddleware, (req, res) => {
   // @ts-ignore - csurf adds csrfToken method to request
   res.json({ csrfToken: req.csrfToken() });
 });

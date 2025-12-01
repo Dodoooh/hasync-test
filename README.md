@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.7** - Clean API documentation with only existing endpoints
+✅ **WORKING v1.3.8** - Swagger UI fully functional with conditional CSRF
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

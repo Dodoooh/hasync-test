@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.3.8
+
+- **CSRF CONDITIONAL PROTECTION: JWT requests skip CSRF**
+- Fixed 500 "invalid csrf token" errors in Swagger UI
+- Problem: CSRF protection blocked all API requests from Swagger UI
+- Swagger UI uses JWT (Bearer token), not cookies
+- CSRF is for cookie-based authentication, not JWT
+- Solution: Conditional CSRF middleware
+- Skip CSRF if Authorization header with Bearer token present (JWT)
+- Use CSRF for requests without Bearer token (cookie-based auth)
+- Swagger UI Execute now works perfectly with JWT authentication
+- Web forms still protected by CSRF (cookie-based)
+- Best of both worlds: API usability + Web security
+- All Execute buttons in Swagger UI now work!
+
 ## 1.3.7
 
 - **SWAGGER YAML COMPLETE REWRITE: Clean, accurate API documentation**
