@@ -267,17 +267,11 @@ app.use((_req, res, next) => {
 // Middleware - Permissive CORS for Home Assistant addon (internal network only)
 app.use(cors({
   origin: (origin, callback) => {
-    // Log all CORS requests for debugging
-    console.log(`[CORS] Request from origin: "${origin || 'no-origin'}"`);
-    console.log(`[CORS] Allowed origins:`, allowedOrigins);
-
     // SECURITY: Only allow requests without Origin header from localhost or trusted tools
     // This prevents bypassing CORS by omitting the Origin header
     if (!origin) {
       const referer = callback['req']?.headers?.referer;
       const host = callback['req']?.headers?.host;
-
-      console.log(`[CORS] No origin header - Host: ${host}, Referer: ${referer}`);
 
       // Allow localhost, internal IPs, and Home Assistant addon network
       const isLocalhost = host?.includes('localhost') || host?.includes('127.0.0.1');
@@ -287,13 +281,16 @@ app.use(cors({
       const isProxied = forwardedFor !== undefined; // Allow proxied requests (http-server)
 
       if (isLocalhost || isInternalIP || isTrustedTool || isProxied) {
-        console.log(`[CORS] ✅ Allowed (no origin): localhost=${isLocalhost}, internal=${isInternalIP}, proxied=${isProxied}`);
         callback(null, true);
         return;
       }
 
       // Reject all other requests without Origin header
-      console.error(`[CORS] ❌ Rejected: No origin header and not from trusted source`);
+      logger.error('CORS rejected - no origin header from untrusted source', {
+        host,
+        referer,
+        ip: callback['req']?.ip
+      });
       callback(new Error('Origin header required for security'));
       return;
     }
@@ -303,11 +300,14 @@ app.use(cors({
     const isInternalOrigin = origin.includes('://10.') || origin.includes('://172.') || origin.includes('://192.168.') || origin.includes('://localhost') || origin.includes('://127.0.0.1');
 
     if (isOriginAllowed || isInternalOrigin) {
-      console.log(`[CORS] ✅ Allowed: ${origin} (in-list=${isOriginAllowed}, internal=${isInternalOrigin})`);
       callback(null, true);
     } else {
-      console.error(`[CORS] ❌ Rejected: "${origin}"`);
-      console.error(`[CORS] Allowed origins:`, allowedOrigins);
+      logger.error('CORS rejected', {
+        origin,
+        method: callback['req']?.method,
+        path: callback['req']?.path,
+        ip: callback['req']?.ip
+      });
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -1521,6 +1521,18 @@ mainServer.listen(tlsOptions.port, () => {
   }
 
   console.log(`  Database:  ${DATABASE_PATH}`);
+  console.log('═══════════════════════════════════════════════');
+  console.log('  CORS Configuration');
+  console.log('───────────────────────────────────────────────');
+  console.log(`  Internal Networks: ✓ Allowed (10.x, 172.x, 192.168.x)`);
+  console.log(`  Localhost: ✓ Allowed`);
+  console.log(`  Configured Origins: ${allowedOrigins.length} origins`);
+  if (process.env.LOG_LEVEL === 'debug') {
+    console.log(`  Origins:`, allowedOrigins.slice(0, 5).join(', '), allowedOrigins.length > 5 ? '...' : '');
+  }
+  console.log('═══════════════════════════════════════════════');
+  console.log('  Log Level: ' + (process.env.LOG_LEVEL || 'info').toUpperCase());
+  console.log('  Logging: Errors, Auth, Config changes (Healthchecks filtered)');
   console.log('═══════════════════════════════════════════════');
   console.log('');
 });

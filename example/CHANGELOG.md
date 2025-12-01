@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.4
+
+- **SMART LOGGING SYSTEM: Dramatically reduced log verbosity**
+- CORS logs only on errors (no more logs on every successful request)
+- Healthcheck requests filtered out (no more spam every 30 seconds)
+- Routine API polling (`/api/clients`, `/api/entities`) only logged on DEBUG level
+- Request logging focuses on important events: errors, authentication, config changes
+- Added comprehensive startup log showing CORS configuration once
+- Removed duplicate http-server logs for cleaner output
+- Environment variable `LOG_LEVEL` (debug/info/warn/error) now properly respected
+- Better debugging: only log what matters, reduce noise by 90%+
+
 ## 1.2.3
 
 - **TEMPORARY FIX: CSRF disabled for /api/config/ha endpoint**

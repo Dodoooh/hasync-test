@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.2.3** - CSRF disabled for Home Assistant config endpoint
+✅ **WORKING v1.2.4** - Smart logging system with reduced verbosity
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
