@@ -8,6 +8,12 @@
 # Stage 2: Install runtime dependencies on Home Assistant base
 # ==============================================================================
 
+# Build arguments that need to be available across all stages
+ARG BUILD_FROM
+ARG NODE_VERSION
+ARG TEMPIO_VERSION
+ARG BUILD_ARCH
+
 # ==============================================================================
 # STAGE 1: Frontend Build Stage
 # ==============================================================================
@@ -66,10 +72,9 @@ COPY rootfs/app/backend/tsconfig.json ./
 # STAGE 3: Final Runtime Stage
 # ==============================================================================
 # Use Home Assistant's official base image (Alpine 3.15)
-ARG BUILD_FROM
 FROM $BUILD_FROM
 
-# Build arguments from build.yaml
+# Re-declare build arguments for this stage (required in multi-stage builds)
 ARG NODE_VERSION
 ARG TEMPIO_VERSION
 ARG BUILD_ARCH

@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-🔄 **UPDATE TEST v1.1.4** - Multi-stage build (FUNDAMENTAL SOLUTION)
+🔄 **UPDATE TEST v1.1.5** - Fixed ARG BUILD_FROM placement
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
