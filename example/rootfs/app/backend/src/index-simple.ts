@@ -293,6 +293,8 @@ app.use(cors({
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.error(`[CORS DEBUG] Origin rejected: "${origin}"`);
+      console.error(`[CORS DEBUG] Allowed origins:`, allowedOrigins);
       callback(new Error('Not allowed by CORS'));
     }
   },

@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.1.9** - Fixed CORS for Home Assistant network
+✅ **WORKING v1.2.0** - Comprehensive network interface detection for CORS
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

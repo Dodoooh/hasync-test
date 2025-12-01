@@ -20,9 +20,16 @@ export MAX_CLIENTS
 export RATE_LIMIT
 
 # Configure CORS to allow Home Assistant addon frontend
-# Get the host IP addresses and allow both localhost and actual IPs on both ports
-HOSTNAME=$(hostname -i 2>/dev/null || echo "127.0.0.1")
-export ALLOWED_ORIGINS="http://localhost:5173,http://127.0.0.1:5173,http://localhost:8099,http://127.0.0.1:8099,http://${HOSTNAME}:5173,http://${HOSTNAME}:8099"
+# Get ALL network interfaces to ensure frontend can connect
+ALL_IPS=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.' || echo "127.0.0.1")
+CORS_ORIGINS="http://localhost:5173,http://127.0.0.1:5173,http://localhost:8099,http://127.0.0.1:8099"
+
+# Add all detected IPs for both ports
+for IP in $ALL_IPS; do
+  CORS_ORIGINS="${CORS_ORIGINS},http://${IP}:5173,http://${IP}:8099"
+done
+
+export ALLOWED_ORIGINS="${CORS_ORIGINS}"
 
 bashio::log.info "CORS origins configured for: ${ALLOWED_ORIGINS}"
 

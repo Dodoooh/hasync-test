@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+
+- **COMPREHENSIVE NETWORK DETECTION FOR CORS**
+- Detect ALL network interfaces using `hostname -I`
+- Add all detected IPs to ALLOWED_ORIGINS automatically
+- Covers cases where browser uses different IP than hostname
+- Added CORS debugging logs to identify rejected origins
+- Fixes CORS issues with multiple network interfaces (10.x, 172.x, etc.)
+
 ## 1.1.9
 
 - **CRITICAL FIX: CORS configuration for Home Assistant network**
