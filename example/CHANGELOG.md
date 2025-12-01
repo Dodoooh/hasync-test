@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.3
+
+- **SWAGGER UI 100% INLINE: Zero HTTP requests**
+- Fixed "Failed to load API definition" error
+- Changed from `url: "swagger.json"` to `spec: <inlined object>`
+- OpenAPI spec now embedded directly in HTML (no fetch needed)
+- Literally ZERO external requests - everything inline
+- CSS inline, JavaScript inline, OpenAPI spec inline
+- This is the COMPLETE solution
+
 ## 1.3.2
 
 - **SWAGGER UI INLINE ASSETS: Complete TLS-proof solution**

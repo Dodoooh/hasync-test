@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.2';
+const VERSION = '1.3.3';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -446,9 +446,8 @@ try {
 
     // Custom HTML page with INLINE assets (NO EXTERNAL REQUESTS = NO TLS ERRORS!)
     app.get('/api-docs', (req, res) => {
-      const protocol = tlsOptions.enabled ? 'https' : 'http';
-      const host = req.get('host') || `localhost:${tlsOptions.port}`;
-      const baseUrl = `${protocol}://${host}`;
+      // Inline the OpenAPI spec directly (no fetch request needed!)
+      const specJson = JSON.stringify(swaggerDocument);
 
       const html = `
 <!DOCTYPE html>
@@ -471,7 +470,7 @@ try {
   <script>
     window.onload = function() {
       window.ui = SwaggerUIBundle({
-        url: "${baseUrl}/api-docs/swagger.json",
+        spec: ${specJson},
         dom_id: '#swagger-ui',
         deepLinking: true,
         presets: [
@@ -493,7 +492,7 @@ try {
       res.send(html);
     });
 
-    logger.info(`Swagger UI available at /api-docs (v${VERSION}) [${protocol.toUpperCase()}] - INLINE assets (NO HTTP requests)`);
+    logger.info(`Swagger UI available at /api-docs (v${VERSION}) [${protocol.toUpperCase()}] - 100% INLINE (zero HTTP requests)`);
   }
 } catch (error) {
   logger.warn('Failed to load Swagger documentation', { error: error instanceof Error ? error.message : 'Unknown error' });
