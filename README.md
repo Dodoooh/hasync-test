@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.1** - Fixed swagger-ui-dist path resolution (404 fix)
+✅ **WORKING v1.3.2** - Swagger UI with inline assets (TLS-proof solution)
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

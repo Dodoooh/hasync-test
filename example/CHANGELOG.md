@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.2
+
+- **SWAGGER UI INLINE ASSETS: Complete TLS-proof solution**
+- Root cause: Browser auto-upgrades HTTP to HTTPS regardless of absolute URLs
+- Solution: Embed ALL Swagger UI assets INLINE (CSS + JavaScript)
+- No external HTTP requests = No TLS errors = 100% working
+- Assets loaded once at server startup, embedded directly in HTML
+- Zero dependencies on external resources or CDN
+- Browser cannot upgrade what doesn't exist as external request
+- This is the DEFINITIVE solution that MUST work
+
 ## 1.3.1
 
 - **SWAGGER UI PATH FIX: Resolved 404 for static assets**

@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.1';
+const VERSION = '1.3.2';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -434,17 +434,18 @@ try {
       res.json(swaggerDocument);
     });
 
-    // Serve Swagger UI static files from node_modules
-    // Get directory of swagger-ui-dist package
+    // Get Swagger UI assets directory
     const swaggerUiPackagePath = require.resolve('swagger-ui-dist/package.json');
     const pathToSwaggerUi = join(swaggerUiPackagePath, '..');
-
     logger.info(`Swagger UI assets path: ${pathToSwaggerUi}`);
-    app.use('/api-docs/static', express.static(pathToSwaggerUi));
 
-    // Custom HTML page with ABSOLUTE HTTP URLs to prevent browser HTTPS upgrade
+    // Read Swagger UI assets ONCE at startup (inline embedding - NO HTTP REQUESTS!)
+    const swaggerUiCss = readFileSync(join(pathToSwaggerUi, 'swagger-ui.css'), 'utf8');
+    const swaggerUiBundleJs = readFileSync(join(pathToSwaggerUi, 'swagger-ui-bundle.js'), 'utf8');
+    const swaggerUiPresetJs = readFileSync(join(pathToSwaggerUi, 'swagger-ui-standalone-preset.js'), 'utf8');
+
+    // Custom HTML page with INLINE assets (NO EXTERNAL REQUESTS = NO TLS ERRORS!)
     app.get('/api-docs', (req, res) => {
-      // Build absolute HTTP URL from request (prevents browser auto-upgrade to HTTPS)
       const protocol = tlsOptions.enabled ? 'https' : 'http';
       const host = req.get('host') || `localhost:${tlsOptions.port}`;
       const baseUrl = `${protocol}://${host}`;
@@ -455,7 +456,7 @@ try {
 <head>
   <meta charset="UTF-8">
   <title>HAsync API Documentation v${VERSION}</title>
-  <link rel="stylesheet" type="text/css" href="${baseUrl}/api-docs/static/swagger-ui.css">
+  <style>${swaggerUiCss}</style>
   <style>
     html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
     *, *:before, *:after { box-sizing: inherit; }
@@ -465,8 +466,8 @@ try {
 </head>
 <body>
   <div id="swagger-ui"></div>
-  <script src="${baseUrl}/api-docs/static/swagger-ui-bundle.js" charset="UTF-8"></script>
-  <script src="${baseUrl}/api-docs/static/swagger-ui-standalone-preset.js" charset="UTF-8"></script>
+  <script>${swaggerUiBundleJs}</script>
+  <script>${swaggerUiPresetJs}</script>
   <script>
     window.onload = function() {
       window.ui = SwaggerUIBundle({
@@ -492,7 +493,7 @@ try {
       res.send(html);
     });
 
-    logger.info(`Swagger UI available at /api-docs (v${VERSION}) [${protocol.toUpperCase()}] - Custom HTML with local assets`);
+    logger.info(`Swagger UI available at /api-docs (v${VERSION}) [${protocol.toUpperCase()}] - INLINE assets (NO HTTP requests)`);
   }
 } catch (error) {
   logger.warn('Failed to load Swagger documentation', { error: error instanceof Error ? error.message : 'Unknown error' });
