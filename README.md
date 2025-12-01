@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.18** - Fixed WebSocket CORS with robust IP detection
+✅ **WORKING v1.3.19** - WebSocket CORS allows internal networks (10.x, 172.x, 192.168.x)
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

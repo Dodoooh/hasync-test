@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.3.19
+
+- **DEFINITIVE FIX: WebSocket CORS now allows internal networks like HTTP CORS does**
+- Problem: v1.3.18 IP detection didn't work in Docker container
+- WebSocket CORS only checked allowedOrigins list (localhost/127.0.0.1)
+- HTTP CORS already allowed internal networks (10.x, 172.x, 192.168.x)
+- Solution: WebSocket CORS now uses SAME logic as HTTP CORS
+- Check if origin is in allowedOrigins OR is internal network
+- Internal network check: `://10.` OR `://172.` OR `://192.168.`
+- Also allows localhost and 127.0.0.1 explicitly
+- Enhanced logging: Shows ✅ or ❌ with "(internal network)" tag
+- WebSocket connections from ANY internal IP now work!
+- Matches HTTP CORS behavior = consistent security policy
+- No more "bad response from server" error for internal networks
+
 ## 1.3.18
 
 - **BUGFIX: WebSocket CORS - Robust IP detection fixed connection issues**

@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.18';
+const VERSION = '1.3.19';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -140,12 +140,19 @@ const io = new SocketIOServer(mainServer, {
         return;
       }
 
-      // Check if origin is in allowed list
-      if (allowedOrigins.includes(origin)) {
-        logger.info(`WebSocket CORS: Allowed origin: ${origin}`);
+      // Check if origin is in allowed list OR is an internal network IP (same as HTTP CORS)
+      const isOriginAllowed = allowedOrigins.includes(origin);
+      const isInternalOrigin = origin.includes('://10.') ||
+                               origin.includes('://172.') ||
+                               origin.includes('://192.168.') ||
+                               origin.includes('://localhost') ||
+                               origin.includes('://127.0.0.1');
+
+      if (isOriginAllowed || isInternalOrigin) {
+        logger.info(`WebSocket CORS: ✅ Allowed origin: ${origin} ${isInternalOrigin ? '(internal network)' : ''}`);
         callback(null, true);
       } else {
-        logger.warn(`WebSocket CORS: Rejected origin: ${origin}`);
+        logger.warn(`WebSocket CORS: ❌ Rejected origin: ${origin}`);
         logger.info(`Allowed origins: ${allowedOrigins.join(', ')}`);
         callback(new Error('Not allowed by CORS'));
       }
