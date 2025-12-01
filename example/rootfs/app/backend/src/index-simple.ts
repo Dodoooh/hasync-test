@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.3';
+const VERSION = '1.3.4';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -419,19 +419,23 @@ try {
     // Update version in swagger doc
     swaggerDocument.info.version = VERSION;
 
-    // Force HTTP server URL
-    const protocol = tlsOptions.enabled ? 'https' : 'http';
-    const serverUrl = `${protocol}://localhost:${tlsOptions.port}`;
-    swaggerDocument.servers = [
-      {
-        url: serverUrl,
-        description: 'HAsync Backend API Server'
-      }
-    ];
+    // Serve swagger spec JSON with dynamic server URL
+    app.get('/api-docs/swagger.json', (req, res) => {
+      // Set server URL dynamically based on request host
+      const protocol = tlsOptions.enabled ? 'https' : 'http';
+      const host = req.get('host') || `localhost:${tlsOptions.port}`;
+      const serverUrl = `${protocol}://${host}`;
 
-    // Serve swagger spec JSON
-    app.get('/api-docs/swagger.json', (_req, res) => {
-      res.json(swaggerDocument);
+      const spec = {
+        ...swaggerDocument,
+        servers: [
+          {
+            url: serverUrl,
+            description: 'HAsync Backend API Server'
+          }
+        ]
+      };
+      res.json(spec);
     });
 
     // Get Swagger UI assets directory
@@ -446,8 +450,24 @@ try {
 
     // Custom HTML page with INLINE assets (NO EXTERNAL REQUESTS = NO TLS ERRORS!)
     app.get('/api-docs', (req, res) => {
+      // Build server URL dynamically from request
+      const protocol = tlsOptions.enabled ? 'https' : 'http';
+      const host = req.get('host') || `localhost:${tlsOptions.port}`;
+      const serverUrl = `${protocol}://${host}`;
+
+      // Create OpenAPI spec with dynamic server URL
+      const specWithDynamicServer = {
+        ...swaggerDocument,
+        servers: [
+          {
+            url: serverUrl,
+            description: 'HAsync Backend API Server'
+          }
+        ]
+      };
+
       // Inline the OpenAPI spec directly (no fetch request needed!)
-      const specJson = JSON.stringify(swaggerDocument);
+      const specJson = JSON.stringify(specWithDynamicServer);
 
       const html = `
 <!DOCTYPE html>
