@@ -2,6 +2,20 @@
 ARG BUILD_FROM
 FROM $BUILD_FROM
 
+# Build arguments from build.yaml
+ARG NODE_VERSION
+
+# Install Node.js, npm, and build dependencies
+RUN apk add --no-cache \
+    nodejs \
+    npm \
+    python3 \
+    make \
+    g++ \
+    sqlite \
+    curl \
+    && rm -rf /var/cache/apk/*
+
 # Execute during the build of the image
 ARG TEMPIO_VERSION BUILD_ARCH
 RUN \

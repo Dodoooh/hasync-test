@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-🔄 **UPDATE TEST v1.0.0** - Incremental development in progress
+🔄 **UPDATE TEST v1.0.1** - Dockerfile updated for Node.js/TypeScript
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
@@ -25,8 +25,9 @@ _Advanced Home Assistant management interface_
 
 ## Development Status
 
-✅ **Step 1 COMPLETE**: Name changed to HAsync
-⏳ **Step 2**: Adding HAsync functionality incrementally
+✅ **Step 1**: Name changed to HAsync
+🔄 **Step 2**: Dockerfile updated with Node.js, npm, TypeScript support
+⏳ **Step 3**: Will add HAsync app files next
 
 <!--
 
