@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-**Version 1.0.5**
+**Version 1.1.7**
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

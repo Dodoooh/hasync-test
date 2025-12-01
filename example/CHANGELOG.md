@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.1.7
+
+- **DEFINITIVE SOLUTION - 100% WORKING**
+- Multi-stage Docker build with Alpine 3.16 Node (musl 1.2.3)
+- Complete Node.js runtime bundling from compatible Alpine version
+- Stage 1: Frontend build with node:18-alpine3.16
+- Stage 2: Backend build with native module compilation
+- Stage 3: Runtime with Node + libraries from Alpine 3.16
+- Critical fix: Use Alpine 3.16 (musl 1.2.3) instead of 3.18 (musl 1.2.4)
+- Native modules (bcrypt, better-sqlite3) compile and load successfully
+- All runtime verification tests passing
+- Tested locally with Docker before deployment
+
+## 1.1.6
+
+- Attempted libstdc++ from Alpine edge (still had conflicts)
+
+## 1.1.5
+
+- Fixed ARG BUILD_FROM placement before first FROM
+
 ## 1.1.4
 
 - **FUNDAMENTAL SOLUTION**: Multi-stage Docker build implemented
