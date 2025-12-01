@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -435,7 +435,11 @@ try {
     });
 
     // Serve Swagger UI static files from node_modules
-    const pathToSwaggerUi = require.resolve('swagger-ui-dist').replace(/index\.html$/, '');
+    // Get directory of swagger-ui-dist package
+    const swaggerUiPackagePath = require.resolve('swagger-ui-dist/package.json');
+    const pathToSwaggerUi = join(swaggerUiPackagePath, '..');
+
+    logger.info(`Swagger UI assets path: ${pathToSwaggerUi}`);
     app.use('/api-docs/static', express.static(pathToSwaggerUi));
 
     // Custom HTML page with ABSOLUTE HTTP URLs to prevent browser HTTPS upgrade

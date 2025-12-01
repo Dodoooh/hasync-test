@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.1
+
+- **SWAGGER UI PATH FIX: Resolved 404 for static assets**
+- Fixed swagger-ui-dist directory resolution
+- Changed from `.replace(/index.html$/, '')` to proper path resolution
+- Use `require.resolve('swagger-ui-dist/package.json')` to find package root
+- Added debug logging to show resolved asset path
+- Static files should now serve correctly from node_modules
+
 ## 1.3.0
 
 - **SWAGGER UI ABSOLUTE URLS: Fixed browser HTTPS auto-upgrade**

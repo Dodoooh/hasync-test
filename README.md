@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.0** - Absolute HTTP URLs prevent browser HTTPS upgrade
+✅ **WORKING v1.3.1** - Fixed swagger-ui-dist path resolution (404 fix)
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
