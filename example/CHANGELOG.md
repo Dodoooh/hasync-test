@@ -4,11 +4,13 @@
 
 - **SWAGGER UI EXECUTE FIX: Dynamic server URL**
 - Fixed "Verbindung zum Server konnte nicht hergestellt werden" error
-- Problem: Server URL was hardcoded to `localhost`, but accessed via `10.50.50.100`
-- Solution: Build server URL dynamically from request host
-- OpenAPI spec now uses actual host: `http://10.50.50.100:8099` instead of `localhost`
+- Problem: Server URL was hardcoded to `localhost`
+- Solution: Build server URL dynamically from request host header (`req.get('host')`)
+- OpenAPI spec now automatically uses the IP/domain the user accesses from
+- Works for ALL installations - no configuration needed
+- Examples: `http://192.168.1.100:8099`, `http://homeassistant.local:8099`, etc.
 - Execute button in Swagger UI now works perfectly
-- API calls go to the correct server address
+- API calls go to the correct server address automatically
 - This is the FINAL working solution
 
 ## 1.3.3
