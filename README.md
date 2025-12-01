@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-🔄 **UPDATE TEST v1.0.1** - Dockerfile updated for Node.js/TypeScript
+🔄 **UPDATE TEST v1.0.1** - Version and docs updated
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
