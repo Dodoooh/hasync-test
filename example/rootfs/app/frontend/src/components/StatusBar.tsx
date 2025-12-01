@@ -177,7 +177,7 @@ export const StatusBar: React.FC = () => {
       {/* API Link */}
       <Tooltip title="Open API Documentation">
         <Link
-          href="http://localhost:8099/api-docs"
+          href={`${window.location.protocol}//${window.location.hostname}:8099/api-docs`}
           target="_blank"
           rel="noopener noreferrer"
           sx={{

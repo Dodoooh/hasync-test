@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.2.5** - Clean logs with http-server silenced and backup fix
+✅ **WORKING v1.2.6** - Version display and API Docs fixes
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

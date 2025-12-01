@@ -59,6 +59,9 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 // Initialize logger
 const logger = createLogger('Server');
 
+// Version from config.yaml
+const VERSION = '1.2.6';
+
 // Setup global error handlers
 setupUnhandledRejectionHandler();
 setupUncaughtExceptionHandler();
@@ -413,14 +416,22 @@ try {
   const swaggerPath = join(__dirname, 'swagger.yaml');
   if (existsSync(swaggerPath)) {
     const swaggerDocument = YAML.parse(readFileSync(swaggerPath, 'utf8'));
+    // Update version in swagger doc
+    swaggerDocument.info.version = VERSION;
+
     app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
       customCss: '.swagger-ui .topbar { display: none }',
-      customSiteTitle: 'HAsync API Documentation'
+      customSiteTitle: `HAsync API Documentation v${VERSION}`,
+      swaggerOptions: {
+        persistAuthorization: true,
+        displayRequestDuration: true,
+        tryItOutEnabled: true,
+      }
     }));
-    console.log('✓ Swagger UI available at /api-docs');
+    logger.info(`Swagger UI available at /api-docs (v${VERSION})`);
   }
 } catch (error) {
-  console.warn('⚠ Failed to load Swagger documentation:', error);
+  logger.warn('Failed to load Swagger documentation', { error: error instanceof Error ? error.message : 'Unknown error' });
 }
 
 // Health check endpoint
@@ -433,7 +444,7 @@ app.get('/api/health', (_req, res) => {
       database: db ? 'connected' : 'disconnected',
       websocket: 'initializing'
     },
-    version: '1.0.0'
+    version: VERSION
   };
   res.json(health);
 });
@@ -1503,7 +1514,7 @@ app.get('/api/privacy-policy', readLimiter, (req, res) => {
 mainServer.listen(tlsOptions.port, () => {
   console.log('');
   console.log('═══════════════════════════════════════════════');
-  console.log('  HAsync Backend Server Started');
+  console.log(`  HAsync Backend Server v${VERSION}`);
   console.log('═══════════════════════════════════════════════');
 
   if (tlsOptions.enabled) {

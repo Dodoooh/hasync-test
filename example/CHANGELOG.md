@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.6
+
+- **VERSION DISPLAY: Server startup now shows version number**
+- Added version to server startup banner: `HAsync Backend Server v1.2.6`
+- Version displayed in health check endpoint `/api/health`
+- Version shown in Swagger UI title
+- **API DOCS URL FIX: Frontend now uses correct IP instead of localhost**
+- Changed hardcoded `localhost:8099` to dynamic `window.location.hostname:8099`
+- API Docs link in StatusBar now works from any IP address
+- **SWAGGER UI IMPROVEMENTS: Better configuration and persistence**
+- Added `persistAuthorization`, `displayRequestDuration`, `tryItOutEnabled`
+- Improved Swagger documentation loading with better error handling
+- Version automatically injected into Swagger spec
+
 ## 1.2.5
 
 - **CLEAN LOGS: Removed http-server proxy verbosity**
