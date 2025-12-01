@@ -1,5 +1,72 @@
 # Changelog
 
+## 1.3.25
+
+- **🚀 MAJOR FEATURE: Complete Client Pairing System**
+- Implemented full PIN-based pairing workflow for client apps
+- Admin generates 6-digit PIN (5 minute expiry)
+- Client verifies PIN with device info
+- Admin assigns areas and completes pairing
+- Client receives 10-year JWT token for authentication
+
+- **New Endpoints:**
+  - `POST /api/pairing/:sessionId/verify` - Client verifies PIN
+  - `POST /api/pairing/:sessionId/complete` - Admin completes pairing
+  - `GET /api/pairing/:sessionId` - Get pairing session status
+  - `DELETE /api/pairing/:sessionId` - Cancel pairing
+  - `GET /api/clients/me` - Client reads own data
+  - `GET /api/clients/:id` - Admin reads specific client
+  - `POST /api/clients/:id/revoke` - Admin revokes client token
+  - Enhanced `GET /api/clients` with full area details
+  - Enhanced `PUT /api/clients/:id` with WebSocket events
+
+- **🔒 CRITICAL SECURITY FIXES:**
+  - Fixed insecure PIN generation (now uses crypto.randomBytes)
+  - Added rate limiting to PIN verification (5 attempts/hour)
+  - Client tokens stored as SHA-256 hash only (never plaintext)
+  - Token revocation with immediate WebSocket disconnect
+  - Enhanced authenticate middleware for client tokens
+  - Removed default JWT secrets (requires env vars)
+  - All client endpoints properly authenticated
+  - CSRF protection on all state-changing operations
+
+- **📡 WebSocket Events for Clients:**
+  - `area_added` - Area assigned to client
+  - `area_removed` - Area removed from client
+  - `area_updated` - Area name/entities changed
+  - `area_enabled` - Area enabled
+  - `area_disabled` - Area disabled
+  - `token_revoked` - Token revoked by admin
+  - `pairing_verified` - Client verified PIN
+  - `pairing_completed` - Pairing finished with token
+  - `connected` - Welcome message after auth
+
+- **🎨 Frontend Components:**
+  - New ClientManagement component with list, edit, delete, revoke
+  - Enhanced PairingWizard with real-time status and area assignment
+  - Material-UI tables, dialogs, and responsive design
+  - Real-time WebSocket updates
+
+- **💾 Database:**
+  - New `pairing_sessions` table (temporary, 5-min expiry)
+  - Enhanced `clients` table with token_hash, assigned_areas, device_info
+  - Automatic cleanup job for expired sessions
+  - All queries use prepared statements
+
+- **📚 Documentation:**
+  - Complete pairing security architecture (1335 lines)
+  - Comprehensive security review (859 lines)
+  - End-to-end test plan (1167 lines)
+  - Integration plan and verification checklist
+
+- **🎯 Client App Integration:**
+  - Clients authenticate with 10-year tokens
+  - Clients only receive updates for assigned areas
+  - Clients connect to HA WebSocket directly for entity states
+  - This addon only tells clients which entities to display
+
+This is a MAJOR release with complete pairing infrastructure and critical security improvements!
+
 ## 1.3.24
 
 - **🚨 MAJOR SECURITY FIX: Added authentication to all sensitive endpoints**

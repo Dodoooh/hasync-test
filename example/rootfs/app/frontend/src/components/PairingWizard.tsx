@@ -27,7 +27,7 @@ import { apiClient } from '@/api/client';
 import { EntitySelector } from './EntitySelector';
 import type { PairingSession, Client } from '@/types';
 
-const steps = ['Generate PIN', 'Client Connection', 'Configure Client', 'Complete'];
+const steps = ['Generate PIN', 'Waiting for Client', 'Assign Areas', 'Success'];
 
 export const PairingWizard: React.FC = () => {
   const { areas, dashboards, selectedEntities, clearEntitySelection } = useAppStore();
@@ -41,20 +41,52 @@ export const PairingWizard: React.FC = () => {
   const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
   const [selectedDashboard, setSelectedDashboard] = useState<string>('');
   const [pairedClient, setPairedClient] = useState<Client | null>(null);
+  const [verifiedDeviceName, setVerifiedDeviceName] = useState('');
+  const [verifiedDeviceType, setVerifiedDeviceType] = useState('');
+  const [pinExpired, setPinExpired] = useState(false);
 
   useEffect(() => {
-    // Listen for pairing requests
-    const unsubscribe = onWsEvent('pairing_request', (data: { session: PairingSession }) => {
-      if (data.session.id === pairingSession?.id) {
-        setPairingSession(data.session);
-        if (data.session.status === 'active') {
-          setActiveStep(2); // Move to configuration step
-        }
+    // Listen for pairing verification
+    const unsubscribeVerified = onWsEvent('pairing_verified', (data: {
+      sessionId: string;
+      deviceName: string;
+      deviceType: string;
+    }) => {
+      if (data.sessionId === pairingSession?.id) {
+        setVerifiedDeviceName(data.deviceName);
+        setVerifiedDeviceType(data.deviceType);
+        setClientName(data.deviceName); // Prefill client name
+        setDeviceType(data.deviceType as Client['deviceType']);
+        setActiveStep(2); // Move to area assignment step
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribeVerified();
+    };
   }, [pairingSession, onWsEvent]);
+
+  // PIN expiry timer
+  useEffect(() => {
+    if (!pairingSession || activeStep !== 1) {
+      setPinExpired(false);
+      return;
+    }
+
+    const expiryTime = new Date(pairingSession.expiresAt).getTime();
+    const timeUntilExpiry = expiryTime - Date.now();
+
+    if (timeUntilExpiry <= 0) {
+      setPinExpired(true);
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      setPinExpired(true);
+    }, timeUntilExpiry);
+
+    return () => clearTimeout(timeout);
+  }, [pairingSession, activeStep]);
 
   const handleStartPairing = async () => {
     const session = await execute(() => apiClient.createPairingSession());
@@ -69,10 +101,8 @@ export const PairingWizard: React.FC = () => {
 
     try {
       const client = await apiClient.completePairing(pairingSession.id, {
-        name: clientName,
-        deviceType,
+        clientName,
         assignedAreas: selectedAreas,
-        assignedDashboard: selectedDashboard || undefined,
       });
 
       setPairedClient(client);
@@ -91,6 +121,9 @@ export const PairingWizard: React.FC = () => {
     setSelectedAreas([]);
     setSelectedDashboard('');
     setPairedClient(null);
+    setVerifiedDeviceName('');
+    setVerifiedDeviceType('');
+    setPinExpired(false);
     clearEntitySelection();
   };
 
@@ -141,7 +174,7 @@ export const PairingWizard: React.FC = () => {
               </Stack>
             )}
 
-            {/* Step 1: Show PIN */}
+            {/* Step 1: Waiting for Client */}
             {activeStep === 1 && pairingSession && (
               <Stack spacing={3} alignItems="center" py={4}>
                 <Typography variant="h6">Enter this PIN on your client device:</Typography>
@@ -149,7 +182,7 @@ export const PairingWizard: React.FC = () => {
                   elevation={3}
                   sx={{
                     p: 4,
-                    bgcolor: 'primary.main',
+                    bgcolor: pinExpired ? 'error.main' : 'primary.main',
                     color: 'primary.contrastText',
                   }}
                 >
@@ -157,22 +190,51 @@ export const PairingWizard: React.FC = () => {
                     {pairingSession.pin}
                   </Typography>
                 </Paper>
-                <Typography color="text.secondary" align="center">
-                  Waiting for client to connect...
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  PIN expires: {new Date(pairingSession.expiresAt).toLocaleTimeString()}
-                </Typography>
-                <Button variant="outlined" onClick={handleCancel}>
-                  Cancel Pairing
+
+                {pinExpired ? (
+                  <Alert severity="error" sx={{ width: '100%' }}>
+                    PIN has expired. Please generate a new PIN.
+                  </Alert>
+                ) : (
+                  <>
+                    <Alert severity="info" sx={{ width: '100%' }}>
+                      Waiting for client to enter PIN...
+                    </Alert>
+                    <Typography variant="caption" color="text.secondary">
+                      PIN expires: {new Date(pairingSession.expiresAt).toLocaleTimeString()}
+                    </Typography>
+                  </>
+                )}
+
+                <Button
+                  variant="outlined"
+                  onClick={handleCancel}
+                >
+                  {pinExpired ? 'Generate New PIN' : 'Cancel Pairing'}
                 </Button>
               </Stack>
             )}
 
-            {/* Step 2: Configure Client */}
+            {/* Step 2: Admin Assigns Areas */}
             {activeStep === 2 && (
               <Stack spacing={3}>
-                <Alert severity="success">Client connected successfully!</Alert>
+                <Alert severity="success">
+                  Client connected! Device: {verifiedDeviceName} ({verifiedDeviceType})
+                </Alert>
+
+                <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Connected Device Information
+                  </Typography>
+                  <Stack spacing={1}>
+                    <Typography variant="body2">
+                      Device Name: {verifiedDeviceName}
+                    </Typography>
+                    <Typography variant="body2">
+                      Device Type: {verifiedDeviceType}
+                    </Typography>
+                  </Stack>
+                </Paper>
 
                 <TextField
                   fullWidth
@@ -180,27 +242,15 @@ export const PairingWizard: React.FC = () => {
                   value={clientName}
                   onChange={(e) => setClientName(e.target.value)}
                   placeholder="e.g., Living Room Tablet"
+                  helperText="Customize the display name for this client"
                 />
 
                 <FormControl fullWidth>
-                  <InputLabel>Device Type</InputLabel>
-                  <Select
-                    value={deviceType}
-                    label="Device Type"
-                    onChange={(e) => setDeviceType(e.target.value as Client['deviceType'])}
-                  >
-                    <MenuItem value="phone">Phone</MenuItem>
-                    <MenuItem value="tablet">Tablet</MenuItem>
-                    <MenuItem value="desktop">Desktop</MenuItem>
-                  </Select>
-                </FormControl>
-
-                <FormControl fullWidth>
-                  <InputLabel>Assign Areas</InputLabel>
+                  <InputLabel>Assigned Areas *</InputLabel>
                   <Select
                     multiple
                     value={selectedAreas}
-                    label="Assign Areas"
+                    label="Assigned Areas *"
                     onChange={(e) => setSelectedAreas(e.target.value as string[])}
                     renderValue={(selected) => (
                       <Box display="flex" gap={0.5} flexWrap="wrap">
@@ -222,30 +272,12 @@ export const PairingWizard: React.FC = () => {
                   </Select>
                 </FormControl>
 
-                <FormControl fullWidth>
-                  <InputLabel>Assign Dashboard</InputLabel>
-                  <Select
-                    value={selectedDashboard}
-                    label="Assign Dashboard"
-                    onChange={(e) => setSelectedDashboard(e.target.value)}
-                  >
-                    <MenuItem value="">
-                      <em>None</em>
-                    </MenuItem>
-                    {dashboards.map((dashboard) => (
-                      <MenuItem key={dashboard.id} value={dashboard.id}>
-                        {dashboard.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
                 <Box display="flex" gap={2} justifyContent="flex-end">
                   <Button onClick={handleCancel}>Cancel</Button>
                   <Button
                     variant="contained"
                     onClick={handleCompletePairing}
-                    disabled={!clientName.trim()}
+                    disabled={!clientName.trim() || selectedAreas.length === 0}
                   >
                     Complete Pairing
                   </Button>
@@ -253,30 +285,59 @@ export const PairingWizard: React.FC = () => {
               </Stack>
             )}
 
-            {/* Step 3: Complete */}
+            {/* Step 3: Success */}
             {activeStep === 3 && pairedClient && (
               <Stack spacing={3} alignItems="center" py={4}>
                 <CheckCircleIcon sx={{ fontSize: 80, color: 'success.main' }} />
                 <Typography variant="h6">Pairing Complete!</Typography>
-                <Paper sx={{ p: 2, bgcolor: 'background.default', width: '100%' }}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Client Details:
+
+                <Paper sx={{ p: 3, bgcolor: 'background.default', width: '100%' }}>
+                  <Typography variant="subtitle2" gutterBottom color="primary">
+                    Client Details
                   </Typography>
-                  <Stack spacing={1}>
-                    <Typography>Name: {pairedClient.name}</Typography>
-                    <Typography>Device: {pairedClient.deviceType}</Typography>
-                    <Typography>
-                      Areas: {selectedAreas.length > 0 ? selectedAreas.length : 'None'}
-                    </Typography>
-                    <Typography>
-                      Dashboard:{' '}
-                      {selectedDashboard
-                        ? dashboards.find((d) => d.id === selectedDashboard)?.name
-                        : 'None'}
-                    </Typography>
+                  <Stack spacing={2} mt={2}>
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Name
+                      </Typography>
+                      <Typography variant="body1" fontWeight="medium">
+                        {pairedClient.name}
+                      </Typography>
+                    </Box>
+
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Device Type
+                      </Typography>
+                      <Typography variant="body1" fontWeight="medium">
+                        {pairedClient.deviceType}
+                      </Typography>
+                    </Box>
+
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Assigned Areas
+                      </Typography>
+                      <Box display="flex" gap={0.5} flexWrap="wrap" mt={0.5}>
+                        {selectedAreas.length > 0 ? (
+                          selectedAreas.map((areaId) => (
+                            <Chip
+                              key={areaId}
+                              label={areas.find((a) => a.id === areaId)?.name || areaId}
+                              size="small"
+                              color="primary"
+                              variant="outlined"
+                            />
+                          ))
+                        ) : (
+                          <Typography variant="body1">None</Typography>
+                        )}
+                      </Box>
+                    </Box>
                   </Stack>
                 </Paper>
-                <Button variant="contained" onClick={handleReset}>
+
+                <Button variant="contained" onClick={handleReset} size="large">
                   Pair Another Client
                 </Button>
               </Stack>

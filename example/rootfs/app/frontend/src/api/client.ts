@@ -295,19 +295,41 @@ class ApiClient {
     return data;
   }
 
+  async revokeClientToken(id: string): Promise<void> {
+    await this.instance.post(`/clients/${id}/revoke`);
+  }
+
+  // Client self-service (for client apps)
+  async getMyClientInfo(): Promise<Client> {
+    const { data } = await this.instance.get<Client>('/clients/me');
+    return data;
+  }
+
   // Pairing endpoints
   async createPairingSession(): Promise<PairingSession> {
     const { data } = await this.instance.post<PairingSession>('/pairing/create');
     return data;
   }
 
-  async getPairingSession(id: string): Promise<PairingSession> {
-    const { data } = await this.instance.get<PairingSession>(`/pairing/${id}`);
+  async getPairingSession(sessionId: string): Promise<PairingSession> {
+    const { data } = await this.instance.get<PairingSession>(`/pairing/${sessionId}`);
     return data;
   }
 
-  async completePairing(sessionId: string, clientInfo: Partial<Client>): Promise<Client> {
-    const { data } = await this.instance.post<Client>(`/pairing/${sessionId}/complete`, clientInfo);
+  async verifyPairingPin(sessionId: string, pin: string, deviceName: string, deviceType: string): Promise<any> {
+    const { data } = await this.instance.post(`/pairing/${sessionId}/verify`, {
+      pin,
+      deviceName,
+      deviceType,
+    });
+    return data;
+  }
+
+  async completePairing(sessionId: string, clientName: string, assignedAreas: string[]): Promise<any> {
+    const { data } = await this.instance.post(`/pairing/${sessionId}/complete`, {
+      clientName,
+      assignedAreas,
+    });
     return data;
   }
 

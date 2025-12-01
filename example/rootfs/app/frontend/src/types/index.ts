@@ -46,7 +46,9 @@ export interface Client {
   assignedAreas: string[];
   assignedDashboard?: string;
   lastSeen: Date;
+  lastSeenAt?: Date;
   ipAddress?: string;
+  tokenHash?: string;
 }
 
 export interface PairingSession {

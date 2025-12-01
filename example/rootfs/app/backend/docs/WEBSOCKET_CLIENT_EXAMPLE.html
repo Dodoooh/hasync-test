@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebSocket Client Test</title>
+  <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      border-bottom: 2px solid #007bff;
+      padding-bottom: 10px;
+    }
+    .status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .status.connected {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .status.disconnected {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .event {
+      background: #e7f3ff;
+      border-left: 4px solid #007bff;
+      padding: 10px;
+      margin: 10px 0;
+      font-family: monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+    .event .timestamp {
+      color: #666;
+      font-size: 10px;
+    }
+    .event .type {
+      color: #007bff;
+      font-weight: bold;
+    }
+    input {
+      padding: 8px;
+      width: 300px;
+      margin: 5px 0;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    button {
+      padding: 10px 20px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .controls {
+      margin: 20px 0;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 4px;
+    }
+    .events-log {
+      max-height: 400px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+      background: #fafafa;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔌 WebSocket Client Test</h1>
+
+    <div class="controls">
+      <h3>Connection Settings</h3>
+      <div>
+        <label>Server URL:</label><br>
+        <input type="text" id="serverUrl" value="https://localhost:8443" placeholder="https://localhost:8443">
+      </div>
+      <div>
+        <label>Client Token:</label><br>
+        <input type="text" id="token" placeholder="Paste client JWT token here">
+      </div>
+      <button id="connectBtn" onclick="connect()">Connect</button>
+      <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+      <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <div id="status" class="status disconnected">
+      ❌ Disconnected
+    </div>
+
+    <h3>Events Log</h3>
+    <div class="events-log" id="eventsLog">
+      <div style="color: #666; font-style: italic;">
+        No events yet. Connect to the server to see real-time events.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let socket = null;
+
+    function updateStatus(connected, clientId = null) {
+      const statusEl = document.getElementById('status');
+      const connectBtn = document.getElementById('connectBtn');
+      const disconnectBtn = document.getElementById('disconnectBtn');
+
+      if (connected) {
+        statusEl.className = 'status connected';
+        statusEl.textContent = `✅ Connected${clientId ? ` (Client: ${clientId})` : ''}`;
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = false;
+      } else {
+        statusEl.className = 'status disconnected';
+        statusEl.textContent = '❌ Disconnected';
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+      }
+    }
+
+    function logEvent(type, data) {
+      const eventsLog = document.getElementById('eventsLog');
+      const eventEl = document.createElement('div');
+      eventEl.className = 'event';
+
+      const timestamp = new Date().toLocaleTimeString();
+      const dataStr = JSON.stringify(data, null, 2);
+
+      eventEl.innerHTML = `
+        <div class="timestamp">${timestamp}</div>
+        <div class="type">${type}</div>
+        <div>${dataStr}</div>
+      `;
+
+      eventsLog.insertBefore(eventEl, eventsLog.firstChild);
+    }
+
+    function clearLog() {
+      const eventsLog = document.getElementById('eventsLog');
+      eventsLog.innerHTML = '<div style="color: #666; font-style: italic;">Log cleared.</div>';
+    }
+
+    function connect() {
+      const serverUrl = document.getElementById('serverUrl').value;
+      const token = document.getElementById('token').value;
+
+      if (!token) {
+        alert('Please enter a client token');
+        return;
+      }
+
+      logEvent('CONNECTING', { url: serverUrl });
+
+      socket = io(serverUrl, {
+        auth: { token },
+        transports: ['websocket'],
+        rejectUnauthorized: false // For self-signed certificates in development
+      });
+
+      // Connection events
+      socket.on('connect', () => {
+        logEvent('CONNECT', { socketId: socket.id });
+        updateStatus(true);
+      });
+
+      socket.on('connected', (data) => {
+        logEvent('CONNECTED', data);
+        updateStatus(true, data.clientId);
+      });
+
+      socket.on('disconnect', (reason) => {
+        logEvent('DISCONNECT', { reason });
+        updateStatus(false);
+      });
+
+      socket.on('connect_error', (error) => {
+        logEvent('CONNECT_ERROR', {
+          message: error.message,
+          description: error.description,
+          type: error.type
+        });
+        updateStatus(false);
+      });
+
+      // Area events
+      socket.on('area_added', (data) => {
+        logEvent('AREA_ADDED', data);
+        alert(`New area assigned: ${data.name}`);
+      });
+
+      socket.on('area_removed', (data) => {
+        logEvent('AREA_REMOVED', data);
+        alert(`Area removed: ${data.name}`);
+      });
+
+      socket.on('area_updated', (data) => {
+        logEvent('AREA_UPDATED', data);
+      });
+
+      socket.on('area_enabled', (data) => {
+        logEvent('AREA_ENABLED', data);
+        alert(`Area enabled: ${data.name}`);
+      });
+
+      socket.on('area_disabled', (data) => {
+        logEvent('AREA_DISABLED', data);
+        alert(`Area disabled: ${data.name}`);
+      });
+
+      // Token events
+      socket.on('token_revoked', (data) => {
+        logEvent('TOKEN_REVOKED', data);
+        alert(`TOKEN REVOKED: ${data.message}`);
+        localStorage.removeItem('client_token');
+      });
+
+      // Pairing events
+      socket.on('pairing_completed', (data) => {
+        logEvent('PAIRING_COMPLETED', data);
+        alert(`Pairing completed! Token received.`);
+        localStorage.setItem('client_token', data.token);
+      });
+
+      // Error events
+      socket.on('error', (error) => {
+        logEvent('ERROR', error);
+      });
+    }
+
+    function disconnect() {
+      if (socket) {
+        socket.disconnect();
+        socket = null;
+        updateStatus(false);
+        logEvent('DISCONNECTED', { manual: true });
+      }
+    }
+
+    // Load token from localStorage on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      const savedToken = localStorage.getItem('client_token');
+      if (savedToken) {
+        document.getElementById('token').value = savedToken;
+      }
+    });
+  </script>
+</body>
+</html>

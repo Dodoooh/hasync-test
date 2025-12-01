@@ -32,7 +32,7 @@ import { ComponentErrorBoundary } from '@/components/ErrorBoundary';
 const LoginForm = lazy(() => import('@/components/LoginForm').then(m => ({ default: m.LoginForm })));
 const EntitySelector = lazy(() => import('@/components/EntitySelector').then(m => ({ default: m.EntitySelector })));
 const AreaManager = lazy(() => import('@/components/AreaManager').then(m => ({ default: m.AreaManager })));
-const ClientList = lazy(() => import('@/components/ClientList').then(m => ({ default: m.ClientList })));
+const ClientManagement = lazy(() => import('@/components/ClientManagement').then(m => ({ default: m.ClientManagement })));
 const PairingWizard = lazy(() => import('@/components/PairingWizard').then(m => ({ default: m.PairingWizard })));
 const Settings = lazy(() => import('@/components/Settings').then(m => ({ default: m.Settings })));
 const StatusBar = lazy(() => import('@/components/StatusBar').then(m => ({ default: m.StatusBar })));
@@ -175,8 +175,8 @@ const App: React.FC = () => {
           );
         case 2:
           return (
-            <ComponentErrorBoundary componentName="Client List">
-              <ClientList />
+            <ComponentErrorBoundary componentName="Client Management">
+              <ClientManagement />
             </ComponentErrorBoundary>
           );
         case 3:

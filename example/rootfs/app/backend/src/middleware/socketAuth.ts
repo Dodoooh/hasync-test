@@ -6,7 +6,13 @@
 import { Socket } from 'socket.io';
 import { ExtendedError } from 'socket.io/dist/namespace';
 import { verifyAccessToken } from './auth';
+import { hashToken } from '../utils/tokenUtils';
 import rateLimit from 'express-rate-limit';
+import Database from 'better-sqlite3';
+
+// Database connection for token verification
+const DATABASE_PATH = process.env.DATABASE_PATH || '/data/app01.db';
+const db = new Database(DATABASE_PATH);
 
 // Rate limiter for WebSocket connections
 const connectionAttempts = new Map<string, { count: number; firstAttempt: number }>();
@@ -125,13 +131,51 @@ export function socketAuthMiddleware(socket: Socket, next: (err?: ExtendedError)
       return next(error);
     }
 
-    // Attach user info to socket
+    // Check token type
+    if (decoded.role === 'admin') {
+      // Admin token
+      (socket as any).user = {
+        username: decoded.username,
+        role: decoded.role,
+      };
+      console.log(`[WebSocket] ✅ SUCCESS - User authenticated: ${decoded.username} (${socket.id})`);
+      return next();
+    } else if (decoded.role === 'client') {
+      // Client token - verify hash in database
+      const tokenHash = hashToken(token);
+      const client: any = db.prepare('SELECT * FROM clients WHERE token_hash = ? AND is_active = 1').get(tokenHash);
+
+      if (!client) {
+        const error = new Error('Token revoked or invalid') as ExtendedError;
+        error.data = { code: 'TOKEN_REVOKED' };
+        return next(error);
+      }
+
+      (socket as any).user = {
+        clientId: client.id,
+        role: 'client',
+        assignedAreas: client.assigned_areas ? JSON.parse(client.assigned_areas) : []
+      };
+
+      console.log(`[WebSocket] ✅ Client authenticated: ${client.id} (${socket.id})`);
+      return next();
+    }
+
+    // For backwards compatibility, handle tokens without explicit role
     (socket as any).user = {
       username: decoded.username,
       role: decoded.role,
     };
 
-    console.log(`[WebSocket] ✅ SUCCESS - User authenticated: ${decoded.username} (${socket.id})`);
+    // For client tokens, also attach clientId for tracking
+    // Client tokens have role='client' and username=clientId
+    if (decoded.role === 'client') {
+      (socket as any).clientId = decoded.username;
+      console.log(`[WebSocket] ✅ SUCCESS - Client authenticated: ${decoded.username} (${socket.id})`);
+    } else {
+      console.log(`[WebSocket] ✅ SUCCESS - User authenticated: ${decoded.username} (${socket.id})`);
+    }
+
     next();
   } catch (error: any) {
     console.error('[WebSocket] Authentication error:', error.message);
@@ -142,7 +186,7 @@ export function socketAuthMiddleware(socket: Socket, next: (err?: ExtendedError)
 }
 
 /**
- * Extend Socket type to include user
+ * Extend Socket type to include user and clientId
  */
 declare module 'socket.io' {
   interface Socket {
@@ -150,5 +194,6 @@ declare module 'socket.io' {
       username: string;
       role: string;
     };
+    clientId?: string;
   }
 }

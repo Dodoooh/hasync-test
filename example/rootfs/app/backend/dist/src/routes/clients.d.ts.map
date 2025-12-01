@@ -1,0 +1,1 @@
+{"version":3,"file":"clients.d.ts","sourceRoot":"","sources":["../../../src/routes/clients.ts"],"names":[],"mappings":"AAIA,OAAO,EAAE,MAAM,EAAE,MAAM,SAAS,CAAC;AACjC,OAAO,EAAE,cAAc,EAAE,MAAM,qBAAqB,CAAC;AACrD,OAAO,EAAE,cAAc,EAAE,MAAM,oBAAoB,CAAC;AAGpD,wBAAgB,mBAAmB,CACjC,cAAc,EAAE,cAAc,EAC9B,cAAc,EAAE,cAAc,GAC7B,MAAM,CA0FR"}

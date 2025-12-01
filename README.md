@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.24** - MAJOR SECURITY FIX: All endpoints now require authentication
+✅ **WORKING v1.3.25** - Complete pairing system with client management and security fixes
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

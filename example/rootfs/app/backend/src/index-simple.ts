@@ -13,6 +13,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import Database from 'better-sqlite3';
 import { join } from 'path';
 import { readFileSync, existsSync } from 'fs';
+import { randomBytes } from 'crypto';
 import csrf from 'csurf';
 import cookieParser from 'cookie-parser';
 import swaggerUi from 'swagger-ui-express';
@@ -55,12 +56,34 @@ import {
 import { createLogger } from './utils/logger';
 import { createAdminRouter } from './routes/admin';
 import { createRequestLoggerMiddleware } from './middleware/requestLogger';
+import {
+  registerClientSocket,
+  unregisterClientSocket,
+  notifyClient,
+  notifyClientsWithArea,
+  notifyAllClients,
+  disconnectClient,
+  notifyAreaAdded,
+  notifyAreaRemoved,
+  notifyPairingCompleted,
+  getConnectedClientCount,
+  EVENT_TYPES
+} from './services/websocket-events';
+import {
+  generateClientToken,
+  hashToken,
+  verifyClientToken,
+  createUnifiedAuthMiddleware,
+  revokeClientToken,
+  cleanupExpiredTokens
+} from './utils/tokenUtils';
+import { migratePairingTables, startPairingCleanupJob } from './database/migrate-pairing';
 
 // Initialize logger
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.22';
+const VERSION = '1.3.25';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -72,12 +95,11 @@ validateTLSConfig(tlsOptions);
 
 const DATABASE_PATH = process.env.DATABASE_PATH || '/data/app01.db';
 // JWT Configuration
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const JWT_EXPIRATION = process.env.JWT_EXPIRATION || '24h';
-
-if (JWT_SECRET === 'change-this-in-production-use-long-random-string' && process.env.NODE_ENV === 'production') {
-  logger.warn('⚠ WARNING: Using default JWT_SECRET in production. Set JWT_SECRET environment variable!');
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('FATAL: JWT_SECRET environment variable is required!');
 }
+const JWT_EXPIRATION = process.env.JWT_EXPIRATION || '24h';
 
 // Admin credentials validation - REQUIRED!
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
@@ -225,7 +247,7 @@ const readLimiter = rateLimit({
   }
 });
 
-// Authentication Middleware - Extract and verify JWT token
+// Authentication Middleware - Extract and verify JWT token (supports both admin and client tokens)
 const authenticate = (req, res, next) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) {
@@ -236,19 +258,48 @@ const authenticate = (req, res, next) => {
   }
 
   try {
-    // Verify and decode JWT token
     const decoded = jwt.verify(token, JWT_SECRET, {
       issuer: 'hasync-backend',
       audience: 'hasync-client'
-    }) as { username: string; role: string; iat: number; exp: number };
+    }) as any;
 
-    // Attach user information to request
-    req.user = {
-      id: decoded.username,
-      username: decoded.username,
-      role: decoded.role
-    };
-    next();
+    // Check token type
+    if (decoded.role === 'admin') {
+      // Admin token
+      req.user = {
+        id: decoded.username,
+        username: decoded.username,
+        role: 'admin'
+      };
+      next();
+    } else if (decoded.role === 'client') {
+      // Client token - verify hash in database
+      const tokenHash = hashToken(token);
+      const client: any = db.prepare('SELECT * FROM clients WHERE token_hash = ? AND is_active = 1').get(tokenHash);
+
+      if (!client) {
+        return res.status(401).json({
+          error: 'Token revoked or invalid',
+          message: 'This token has been revoked or is no longer valid'
+        });
+      }
+
+      req.user = {
+        id: client.id,
+        clientId: client.id,
+        role: 'client',
+        assignedAreas: client.assigned_areas ? JSON.parse(client.assigned_areas) : []
+      };
+
+      // Update last_seen
+      db.prepare('UPDATE clients SET last_seen_at = ? WHERE id = ?').run(Date.now(), client.id);
+
+      next();
+    } else {
+      return res.status(401).json({
+        error: 'Invalid token type'
+      });
+    }
   } catch (error: any) {
     logger.warn(`Authentication failed: ${error.message}`);
 
@@ -475,6 +526,43 @@ try {
     }
   }
 
+  // Run pairing migration
+  const pairingMigrationPath = join(__dirname, 'database', 'schema-migration-pairing.sql');
+  if (existsSync(pairingMigrationPath)) {
+    try {
+      const pairingMigration = readFileSync(pairingMigrationPath, 'utf8');
+      db.exec(pairingMigration);
+      console.log('✓ Pairing migration applied');
+    } catch (error: any) {
+      // Gracefully handle duplicate column errors (migration already applied)
+      if (error.message && error.message.includes('duplicate column')) {
+        console.log('→ Pairing migration already applied (duplicate column ignored)');
+      } else {
+        // Log other errors but don't crash the server
+        console.error('⚠ Pairing migration warning:', error.message);
+      }
+    }
+  }
+
+  // Run TypeScript-based pairing migration and start cleanup job
+  try {
+    logger.info('Running pairing tables migration...');
+    migratePairingTables(db);
+    logger.info('✓ Pairing tables ready');
+
+    // Start cleanup job for expired sessions
+    const cleanupJobId = startPairingCleanupJob(db);
+    logger.info('✓ Pairing cleanup job started');
+
+    // Graceful shutdown
+    process.on('SIGTERM', () => {
+      clearInterval(cleanupJobId);
+      logger.info('Pairing cleanup job stopped');
+    });
+  } catch (error: any) {
+    logger.warn(`Pairing migration warning: ${error.message}`);
+  }
+
   // Create initial backup on startup
   const backupDir = process.env.BACKUP_DIR || join(__dirname, '../../backups');
   try {
@@ -596,7 +684,8 @@ try {
       res.send(html);
     });
 
-    logger.info(`Swagger UI available at /api-docs (v${VERSION}) [${protocol.toUpperCase()}] - 100% INLINE (zero HTTP requests)`);
+    const protocolType = tlsOptions.enabled ? 'HTTPS' : 'HTTP';
+    logger.info(`Swagger UI available at /api-docs (v${VERSION}) [${protocolType}] - 100% INLINE (zero HTTP requests)`);
   }
 } catch (error) {
   logger.warn('Failed to load Swagger documentation', { error: error instanceof Error ? error.message : 'Unknown error' });
@@ -630,19 +719,283 @@ app.post('/api/pairing/create', authLimiter, authenticate, (req, res) => {
     });
   }
 
-  const pin = Math.floor(100000 + Math.random() * 900000).toString();
-  const sessionId = `pairing_${Date.now()}`;
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+  try {
+    // SECURITY FIX: Use cryptographically secure random number generation
+    const pinNumber = randomBytes(3).readUIntBE(0, 3) % 900000 + 100000;
+    const pin = pinNumber.toString();
+    const sessionId = `pairing_${Date.now()}`;
+    const expiresAtTimestamp = Math.floor(Date.now() / 1000) + (5 * 60); // 5 minutes from now
+    const createdAtTimestamp = Math.floor(Date.now() / 1000);
 
-  console.log(`[Pairing] Admin ${req.user.username} generated PIN: ${pin} (session: ${sessionId})`);
+    // Store pairing session in database
+    db.prepare(`
+      INSERT INTO pairing_sessions (id, pin, expires_at, created_at, status)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(sessionId, pin, expiresAtTimestamp, createdAtTimestamp, 'pending');
+
+    logger.info(`[Pairing] Admin ${req.user.username} generated PIN: ${pin} (session: ${sessionId})`);
+
+    res.json({
+      id: sessionId,
+      pin,
+      expiresAt: new Date(expiresAtTimestamp * 1000).toISOString(),
+      status: 'pending'
+    });
+  } catch (error: any) {
+    logger.error(`[Pairing] Failed to create pairing session: ${error.message}`);
+    res.status(500).json({
+      error: 'Failed to create pairing session',
+      message: error.message
+    });
+  }
+});
+
+// Verify pairing PIN - PUBLIC endpoint (no authentication required)
+// Client enters PIN to verify pairing session
+app.post('/api/pairing/:sessionId/verify', authLimiter, asyncHandler(async (req: any, res: any) => {
+  const { sessionId } = req.params;
+  const { pin, deviceName, deviceType } = req.body;
+
+  logger.info(`[Pairing] Verify attempt for session: ${sessionId}`);
+
+  // Validate input
+  if (!pin || !deviceName || !deviceType) {
+    throw new ValidationError('PIN, device name, and device type are required');
+  }
+
+  if (!/^\d{6}$/.test(pin)) {
+    throw new ValidationError('PIN must be 6 digits');
+  }
+
+  // Validate device name (1-100 characters, alphanumeric with spaces and common punctuation)
+  if (typeof deviceName !== 'string' || deviceName.length < 1 || deviceName.length > 100) {
+    throw new ValidationError('Device name must be 1-100 characters');
+  }
+
+  if (!['mobile', 'tablet', 'desktop', 'other'].includes(deviceType)) {
+    throw new ValidationError('Invalid device type');
+  }
+
+  // Get pairing session from database
+  const session: any = db.prepare('SELECT * FROM pairing_sessions WHERE id = ?').get(sessionId);
+
+  if (!session) {
+    logger.warn(`[Pairing] Session not found: ${sessionId}`);
+    throw new NotFoundError('Pairing session');
+  }
+
+  // Check if session is expired (5 minutes)
+  const now = Math.floor(Date.now() / 1000);
+  if (now > session.expires_at) {
+    logger.warn(`[Pairing] Session expired: ${sessionId}`);
+    throw new ValidationError('Pairing session has expired. Please generate a new PIN.');
+  }
+
+  // Check if session is already used
+  if (session.status !== 'pending') {
+    logger.warn(`[Pairing] Session already ${session.status}: ${sessionId}`);
+    throw new ValidationError(`Pairing session is already ${session.status}`);
+  }
+
+  // Validate PIN
+  if (session.pin !== pin) {
+    logger.warn(`[Pairing] Invalid PIN for session: ${sessionId}`);
+    throw new ValidationError('Invalid PIN');
+  }
+
+  // Update session with device info and status
+  db.prepare(`
+    UPDATE pairing_sessions
+    SET status = 'verified',
+        device_name = ?,
+        device_type = ?
+    WHERE id = ?
+  `).run(InputSanitizer.sanitizeString(deviceName, 100), deviceType, sessionId);
+
+  logger.info(`[Pairing] Session verified: ${sessionId} - Device: ${deviceName} (${deviceType})`);
+
+  // Emit WebSocket event to notify admin that device is waiting for approval
+  io.emit('pairing_verified', {
+    sessionId,
+    deviceName,
+    deviceType,
+    timestamp: new Date().toISOString()
+  });
 
   res.json({
-    id: sessionId,
-    pin,
-    expiresAt,
-    status: 'pending'
+    success: true,
+    message: 'PIN verified. Waiting for admin approval.',
+    sessionId,
+    status: 'verified'
   });
-});
+}));
+
+// Complete pairing - ADMIN only
+// Admin approves pairing and assigns client name and areas
+app.post('/api/pairing/:sessionId/complete', authLimiter, authenticate, asyncHandler(async (req: any, res: any) => {
+  // Only admin can complete pairing
+  if (req.user.role !== 'admin') {
+    logger.warn(`[Pairing] Non-admin user ${req.user.username} tried to complete pairing`);
+    throw new ValidationError('Only admin users can complete pairing');
+  }
+
+  const { sessionId } = req.params;
+  const { clientName, assignedAreas = [] } = req.body;
+
+  logger.info(`[Pairing] Complete pairing for session: ${sessionId} by admin: ${req.user.username}`);
+
+  // Validate input (1-100 characters, alphanumeric with spaces and common punctuation)
+  if (typeof clientName !== 'string' || clientName.length < 1 || clientName.length > 100) {
+    throw new ValidationError('Client name must be 1-100 characters');
+  }
+
+  if (!Array.isArray(assignedAreas)) {
+    throw new ValidationError('Assigned areas must be an array');
+  }
+
+  // Get pairing session
+  const session: any = db.prepare('SELECT * FROM pairing_sessions WHERE id = ?').get(sessionId);
+
+  if (!session) {
+    logger.warn(`[Pairing] Session not found: ${sessionId}`);
+    throw new NotFoundError('Pairing session');
+  }
+
+  // Check if session status is 'verified'
+  if (session.status !== 'verified') {
+    logger.warn(`[Pairing] Session not verified: ${sessionId} (status: ${session.status})`);
+    throw new ValidationError('Pairing session must be verified before completion');
+  }
+
+  // Generate CLIENT JWT token with 10 year expiry using tokenUtils
+  const clientId = `client_${Date.now()}`;
+  const clientToken = generateClientToken(clientId, assignedAreas);
+  const tokenHash = hashToken(clientToken);
+
+  // Create client in database
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(`
+    INSERT INTO clients (
+      id,
+      name,
+      device_type,
+      public_key,
+      certificate,
+      paired_at,
+      last_seen,
+      is_active,
+      assigned_areas,
+      metadata
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    clientId,
+    InputSanitizer.sanitizeString(clientName, 100),
+    session.device_type,
+    tokenHash, // Using public_key field to store token hash
+    tokenHash, // Using certificate field as duplicate for backward compatibility
+    now,
+    now,
+    1, // is_active
+    JSON.stringify(assignedAreas),
+    JSON.stringify({
+      deviceName: session.device_name,
+      sessionId: sessionId,
+      approvedBy: req.user.username,
+      approvedAt: new Date().toISOString()
+    })
+  );
+
+  // Update pairing session status and link to client
+  db.prepare(`
+    UPDATE pairing_sessions
+    SET status = 'completed',
+        client_id = ?,
+        client_token_hash = ?
+    WHERE id = ?
+  `).run(clientId, tokenHash, sessionId);
+
+  logger.info(`[Pairing] Pairing completed: ${sessionId} → Client: ${clientId} (${clientName})`);
+
+  // Log activity
+  db.prepare(`
+    INSERT INTO activity_log (client_id, action, details, ip_address)
+    VALUES (?, ?, ?, ?)
+  `).run(
+    clientId,
+    'pairing_completed',
+    JSON.stringify({ sessionId, clientName, deviceName: session.device_name }),
+    req.ip || req.connection?.remoteAddress
+  );
+
+  // Emit WebSocket event to client with token
+  io.emit('pairing_completed', {
+    sessionId,
+    clientId,
+    clientToken, // Send the actual token to the client
+    assignedAreas,
+    timestamp: new Date().toISOString()
+  });
+
+  res.json({
+    success: true,
+    clientId,
+    clientToken,
+    assignedAreas,
+    message: 'Pairing completed successfully'
+  });
+}));
+
+// Get pairing session status - PUBLIC endpoint
+app.get('/api/pairing/:sessionId', readLimiter, asyncHandler(async (req: any, res: any) => {
+  const { sessionId } = req.params;
+
+  logger.info(`[Pairing] Get status for session: ${sessionId}`);
+
+  const session: any = db.prepare('SELECT * FROM pairing_sessions WHERE id = ?').get(sessionId);
+
+  if (!session) {
+    logger.warn(`[Pairing] Session not found: ${sessionId}`);
+    throw new NotFoundError('Pairing session');
+  }
+
+  res.json({
+    id: session.id,
+    status: session.status,
+    deviceName: session.device_name,
+    deviceType: session.device_type,
+    expiresAt: new Date(session.expires_at * 1000).toISOString(),
+    createdAt: new Date(session.created_at * 1000).toISOString()
+  });
+}));
+
+// Delete pairing session - ADMIN only
+app.delete('/api/pairing/:sessionId', writeLimiter, authenticate, asyncHandler(async (req: any, res: any) => {
+  // Only admin can delete pairing sessions
+  if (req.user.role !== 'admin') {
+    logger.warn(`[Pairing] Non-admin user ${req.user.username} tried to delete pairing session`);
+    throw new ValidationError('Only admin users can delete pairing sessions');
+  }
+
+  const { sessionId } = req.params;
+
+  logger.info(`[Pairing] Delete session: ${sessionId} by admin: ${req.user.username}`);
+
+  const session = db.prepare('SELECT * FROM pairing_sessions WHERE id = ?').get(sessionId);
+
+  if (!session) {
+    logger.warn(`[Pairing] Session not found: ${sessionId}`);
+    throw new NotFoundError('Pairing session');
+  }
+
+  db.prepare('DELETE FROM pairing_sessions WHERE id = ?').run(sessionId);
+
+  logger.info(`[Pairing] Session deleted: ${sessionId}`);
+
+  res.json({
+    success: true,
+    message: 'Pairing session deleted'
+  });
+}));
 
 // Get HA config from database
 const getHAConfig = (): { url?: string; token?: string } => {
@@ -833,6 +1186,15 @@ app.put('/api/areas/:id', writeLimiter, csrfProtection, authenticate, asyncHandl
   db.prepare('UPDATE areas SET name = ?, entity_ids = ?, is_enabled = ? WHERE id = ?')
     .run(sanitizedName, entity_ids_json, is_enabled, id);
 
+  // Emit area_updated event to all clients with this area
+  notifyClientsWithArea(db, id, EVENT_TYPES.AREA_UPDATED, {
+    areaId: id,
+    name: sanitizedName,
+    entityIds: entityIds || [],
+    isEnabled: is_enabled === 1,
+    message: 'Area has been updated by admin'
+  });
+
   res.json({
     id,
     name: sanitizedName,
@@ -923,6 +1285,16 @@ app.patch('/api/areas/:id', writeLimiter, csrfProtection, authenticate, (req, re
     const updated: any = db.prepare('SELECT * FROM areas WHERE id = ?').get(id);
     console.log(`✓ Area ${id} updated:`, updates);
 
+    // Emit area_updated event to all clients with this area
+    notifyClientsWithArea(db, id, EVENT_TYPES.AREA_UPDATED, {
+      areaId: id,
+      name: updated.name,
+      entityIds: updated.entity_ids ? JSON.parse(updated.entity_ids) : [],
+      isEnabled: updated.is_enabled === 1,
+      updatedFields: Object.keys(updates),
+      message: 'Area has been updated by admin'
+    });
+
     res.json({
       id: updated.id,
       name: updated.name,
@@ -964,6 +1336,16 @@ app.patch('/api/areas/:id/toggle', writeLimiter, csrfProtection, authenticate, (
     db.prepare('UPDATE areas SET is_enabled = ? WHERE id = ?').run(is_enabled, id);
 
     const updated: any = db.prepare('SELECT * FROM areas WHERE id = ?').get(id);
+
+    // Emit area_enabled or area_disabled event based on the new state
+    const eventName = is_enabled === 1 ? EVENT_TYPES.AREA_ENABLED : EVENT_TYPES.AREA_DISABLED;
+    notifyClientsWithArea(db, id, eventName, {
+      areaId: id,
+      name: updated.name,
+      isEnabled: is_enabled === 1,
+      message: `Area has been ${is_enabled === 1 ? 'enabled' : 'disabled'} by admin`
+    });
+
     res.json({
       id: updated.id,
       name: updated.name,
@@ -1130,10 +1512,20 @@ app.delete('/api/areas/:id', writeLimiter, csrfProtection, authenticate, (req, r
     const { id } = req.params;
 
     // Check if area exists
-    const existing = db.prepare('SELECT * FROM areas WHERE id = ?').get(id);
+    const existing: any = db.prepare('SELECT * FROM areas WHERE id = ?').get(id);
     if (!existing) {
       return res.status(404).json({ error: 'Area not found' });
     }
+
+    // Store area info before deletion for notification
+    const deletedAreaName = existing.name;
+
+    // Emit area_removed event BEFORE deleting (so clients can still be found in assigned_areas)
+    notifyClientsWithArea(db, id, EVENT_TYPES.AREA_REMOVED, {
+      areaId: id,
+      name: deletedAreaName,
+      message: 'Area has been removed by admin'
+    });
 
     db.prepare('DELETE FROM areas WHERE id = ?').run(id);
     res.json({ success: true });
@@ -1286,19 +1678,448 @@ app.get('/api/auth/verify', authLimiter, (req, res) => {
 });
 
 // Get clients (fixed to return array instead of object)
-// SECURITY: Requires authentication - only logged-in users can view clients
-app.get('/api/clients', readLimiter, authenticate, (_req, res) => {
+// SECURITY: Requires ADMIN authentication - only admin users can view all clients
+app.get('/api/clients', readLimiter, authenticate, (_req: any, res: any) => {
+  // Only admin can view all clients
+  if (_req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Only admin users can view all clients'
+    });
+  }
+
   try {
     if (db) {
       // ✅ SECURE: Using prepared statement
-      const clients = db.prepare('SELECT * FROM clients WHERE is_active = ?').all(1);
-      res.json(clients || []);
+      const clients = db.prepare(`
+        SELECT
+          c.id,
+          c.name,
+          c.device_type,
+          c.created_at,
+          c.last_seen_at,
+          c.assigned_areas
+        FROM clients c
+        WHERE c.is_active = ?
+      `).all(1);
+
+      // Parse assigned_areas JSON for each client and expand with area details
+      const clientsWithAreas = clients.map((client: any) => {
+        const assignedAreaIds = client.assigned_areas ? JSON.parse(client.assigned_areas) : [];
+
+        // Get full area details for assigned areas
+        const assignedAreas = assignedAreaIds.map((areaId: string) => {
+          const area: any = db.prepare('SELECT id, name, entity_ids, is_enabled FROM areas WHERE id = ?').get(areaId);
+          if (area) {
+            return {
+              id: area.id,
+              name: area.name,
+              entityIds: area.entity_ids ? JSON.parse(area.entity_ids) : [],
+              isEnabled: area.is_enabled === 1
+            };
+          }
+          return null;
+        }).filter((area: any) => area !== null);
+
+        return {
+          id: client.id,
+          name: client.name,
+          deviceType: client.device_type,
+          assignedAreas,
+          createdAt: client.created_at,
+          lastSeenAt: client.last_seen_at
+        };
+      });
+
+      res.json(clientsWithAreas || []);
     } else {
       res.json([]);
     }
   } catch (error) {
     console.error('Error fetching clients:', error);
-    res.json([]);
+    res.status(500).json({ error: 'Failed to fetch clients' });
+  }
+});
+
+// Get current client info (CLIENT token required)
+// SECURITY: Client can only view their own information
+app.get('/api/clients/me', readLimiter, authenticate, (req: any, res: any) => {
+  try {
+    // Extract client ID from JWT token (stored in username field for client tokens)
+    const clientId = req.user.username;
+
+    if (!clientId) {
+      return res.status(401).json({
+        error: 'Invalid token',
+        message: 'Client ID not found in token'
+      });
+    }
+
+    // Get client from database
+    const client: any = db.prepare(`
+      SELECT
+        id,
+        name,
+        device_type,
+        assigned_areas,
+        created_at,
+        last_seen_at
+      FROM clients
+      WHERE id = ? AND is_active = ?
+    `).get(clientId, 1);
+
+    if (!client) {
+      return res.status(404).json({
+        error: 'Client not found',
+        message: 'Your client registration could not be found'
+      });
+    }
+
+    // Parse assigned areas and get full area details (Option B)
+    const assignedAreaIds = client.assigned_areas ? JSON.parse(client.assigned_areas) : [];
+    const assignedAreas = assignedAreaIds.map((areaId: string) => {
+      const area: any = db.prepare('SELECT id, name, entity_ids, is_enabled FROM areas WHERE id = ?').get(areaId);
+      if (area) {
+        return {
+          id: area.id,
+          name: area.name,
+          entityIds: area.entity_ids ? JSON.parse(area.entity_ids) : [],
+          isEnabled: area.is_enabled === 1
+        };
+      }
+      return null;
+    }).filter((area: any) => area !== null);
+
+    logger.info(`Client ${clientId} fetched own information`);
+
+    res.json({
+      id: client.id,
+      name: client.name,
+      deviceType: client.device_type,
+      assignedAreas,
+      createdAt: client.created_at,
+      lastSeenAt: client.last_seen_at
+    });
+  } catch (error: any) {
+    logger.error('Error fetching client info:', error);
+    res.status(500).json({
+      error: 'Failed to fetch client information',
+      message: error.message
+    });
+  }
+});
+
+// Get specific client by ID (ADMIN only)
+// SECURITY: Requires ADMIN authentication
+app.get('/api/clients/:id', readLimiter, authenticate, (req: any, res: any) => {
+  // Only admin can view specific client details
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Only admin users can view client details'
+    });
+  }
+
+  try {
+    const { id } = req.params;
+
+    // Get client from database
+    const client: any = db.prepare(`
+      SELECT
+        id,
+        name,
+        device_type,
+        assigned_areas,
+        created_at,
+        last_seen_at
+      FROM clients
+      WHERE id = ? AND is_active = ?
+    `).get(id, 1);
+
+    if (!client) {
+      return res.status(404).json({
+        error: 'Client not found',
+        message: `Client with id '${id}' does not exist`
+      });
+    }
+
+    // Parse assigned areas and get full area details
+    const assignedAreaIds = client.assigned_areas ? JSON.parse(client.assigned_areas) : [];
+    const assignedAreas = assignedAreaIds.map((areaId: string) => {
+      const area: any = db.prepare('SELECT id, name, entity_ids, is_enabled FROM areas WHERE id = ?').get(areaId);
+      if (area) {
+        return {
+          id: area.id,
+          name: area.name,
+          entityIds: area.entity_ids ? JSON.parse(area.entity_ids) : [],
+          isEnabled: area.is_enabled === 1
+        };
+      }
+      return null;
+    }).filter((area: any) => area !== null);
+
+    res.json({
+      id: client.id,
+      name: client.name,
+      deviceType: client.device_type,
+      assignedAreas,
+      createdAt: client.created_at,
+      lastSeenAt: client.last_seen_at
+    });
+  } catch (error: any) {
+    logger.error('Error fetching client:', error);
+    res.status(500).json({
+      error: 'Failed to fetch client',
+      message: error.message
+    });
+  }
+});
+
+// Update client (ADMIN only)
+// SECURITY: Requires ADMIN authentication
+app.put('/api/clients/:id', writeLimiter, csrfProtection, authenticate, (req: any, res: any) => {
+  // Only admin can update clients
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Only admin users can update clients'
+    });
+  }
+
+  try {
+    const { id } = req.params;
+    const { name, assignedAreas } = req.body;
+
+    // Check if client exists
+    const existing: any = db.prepare('SELECT * FROM clients WHERE id = ? AND is_active = ?').get(id, 1);
+    if (!existing) {
+      return res.status(404).json({
+        error: 'Client not found',
+        message: `Client with id '${id}' does not exist`
+      });
+    }
+
+    // Validate input
+    if (name && !InputSanitizer.validateAreaName(name)) {
+      return res.status(400).json({
+        error: 'Invalid client name',
+        message: 'Name must be 1-100 characters, alphanumeric with spaces and common punctuation'
+      });
+    }
+
+    if (assignedAreas && !Array.isArray(assignedAreas)) {
+      return res.status(400).json({
+        error: 'Invalid assigned areas',
+        message: 'assignedAreas must be an array of area IDs'
+      });
+    }
+
+    // Track area changes for WebSocket notifications
+    const oldAssignedAreas = existing.assigned_areas ? JSON.parse(existing.assigned_areas) : [];
+    const newAssignedAreas = assignedAreas || oldAssignedAreas;
+
+    // Detect added and removed areas
+    const addedAreas = newAssignedAreas.filter((areaId: string) => !oldAssignedAreas.includes(areaId));
+    const removedAreas = oldAssignedAreas.filter((areaId: string) => !newAssignedAreas.includes(areaId));
+
+    // Update client in database
+    const sanitizedName = name ? InputSanitizer.sanitizeString(name, 100) : existing.name;
+    const assigned_areas_json = JSON.stringify(newAssignedAreas);
+
+    db.prepare('UPDATE clients SET name = ?, assigned_areas = ? WHERE id = ?')
+      .run(sanitizedName, assigned_areas_json, id);
+
+    // Emit WebSocket events for area changes
+    if (addedAreas.length > 0 || removedAreas.length > 0) {
+      addedAreas.forEach((areaId: string) => {
+        const area: any = db.prepare('SELECT id, name FROM areas WHERE id = ?').get(areaId);
+        if (area) {
+          io.emit('area_added', {
+            clientId: id,
+            area: {
+              id: area.id,
+              name: area.name
+            },
+            timestamp: new Date().toISOString()
+          });
+          logger.info(`Area ${area.name} added to client ${id}`);
+        }
+      });
+
+      removedAreas.forEach((areaId: string) => {
+        const area: any = db.prepare('SELECT id, name FROM areas WHERE id = ?').get(areaId);
+        if (area) {
+          io.emit('area_removed', {
+            clientId: id,
+            area: {
+              id: area.id,
+              name: area.name
+            },
+            timestamp: new Date().toISOString()
+          });
+          logger.info(`Area ${area.name} removed from client ${id}`);
+        }
+      });
+    }
+
+    // Get updated client with area details
+    const updated: any = db.prepare(`
+      SELECT id, name, device_type, assigned_areas, created_at, last_seen_at
+      FROM clients
+      WHERE id = ?
+    `).get(id);
+
+    const assignedAreaIds = updated.assigned_areas ? JSON.parse(updated.assigned_areas) : [];
+    const assignedAreasDetails = assignedAreaIds.map((areaId: string) => {
+      const area: any = db.prepare('SELECT id, name, entity_ids, is_enabled FROM areas WHERE id = ?').get(areaId);
+      if (area) {
+        return {
+          id: area.id,
+          name: area.name,
+          entityIds: area.entity_ids ? JSON.parse(area.entity_ids) : [],
+          isEnabled: area.is_enabled === 1
+        };
+      }
+      return null;
+    }).filter((area: any) => area !== null);
+
+    logger.info(`Client ${id} updated by admin ${req.user.username}`);
+
+    res.json({
+      id: updated.id,
+      name: updated.name,
+      deviceType: updated.device_type,
+      assignedAreas: assignedAreasDetails,
+      createdAt: updated.created_at,
+      lastSeenAt: updated.last_seen_at
+    });
+  } catch (error: any) {
+    logger.error('Error updating client:', error);
+    res.status(500).json({
+      error: 'Failed to update client',
+      message: error.message
+    });
+  }
+});
+
+// Delete client (ADMIN only)
+// SECURITY: Requires ADMIN authentication
+app.delete('/api/clients/:id', writeLimiter, csrfProtection, authenticate, (req: any, res: any) => {
+  // Only admin can delete clients
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Only admin users can delete clients'
+    });
+  }
+
+  try {
+    const { id } = req.params;
+
+    // Check if client exists
+    const existing: any = db.prepare('SELECT * FROM clients WHERE id = ? AND is_active = ?').get(id, 1);
+    if (!existing) {
+      return res.status(404).json({
+        error: 'Client not found',
+        message: `Client with id '${id}' does not exist`
+      });
+    }
+
+    // Soft delete (mark as inactive)
+    db.prepare('UPDATE clients SET is_active = ? WHERE id = ?').run(0, id);
+
+    // Emit WebSocket event to notify client of deletion
+    io.emit('client_deleted', {
+      clientId: id,
+      timestamp: new Date().toISOString()
+    });
+
+    // Find and disconnect client's WebSocket connection
+    const sockets = io.sockets.sockets;
+    sockets.forEach((socket: any) => {
+      if (socket.user && socket.user.username === id) {
+        socket.emit('token_revoked', {
+          reason: 'Client deleted by administrator',
+          timestamp: new Date().toISOString()
+        });
+        socket.disconnect(true);
+        logger.info(`Disconnected client ${id} due to deletion`);
+      }
+    });
+
+    logger.info(`Client ${id} deleted by admin ${req.user.username}`);
+
+    res.json({
+      success: true,
+      message: 'Client deleted successfully'
+    });
+  } catch (error: any) {
+    logger.error('Error deleting client:', error);
+    res.status(500).json({
+      error: 'Failed to delete client',
+      message: error.message
+    });
+  }
+});
+
+// Revoke client token (ADMIN only)
+// SECURITY: Requires ADMIN authentication
+app.post('/api/clients/:id/revoke', writeLimiter, csrfProtection, authenticate, (req: any, res: any) => {
+  // Only admin can revoke client tokens
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Only admin users can revoke client tokens'
+    });
+  }
+
+  try {
+    const { id } = req.params;
+
+    // Check if client exists
+    const existing: any = db.prepare('SELECT * FROM clients WHERE id = ?').get(id);
+    if (!existing) {
+      return res.status(404).json({
+        error: 'Client not found',
+        message: `Client with id '${id}' does not exist`
+      });
+    }
+
+    // Delete token hash from database (revoke token)
+    db.prepare('UPDATE clients SET token_hash = NULL WHERE id = ?').run(id);
+
+    // Emit WebSocket event to notify client immediately
+    io.emit('token_revoked', {
+      clientId: id,
+      reason: 'Token revoked by administrator',
+      timestamp: new Date().toISOString()
+    });
+
+    // Find and disconnect client's WebSocket connection
+    const sockets = io.sockets.sockets;
+    sockets.forEach((socket: any) => {
+      if (socket.user && socket.user.username === id) {
+        socket.emit('token_revoked', {
+          reason: 'Token revoked by administrator',
+          timestamp: new Date().toISOString()
+        });
+        socket.disconnect(true);
+        logger.info(`Disconnected client ${id} due to token revocation`);
+      }
+    });
+
+    logger.info(`Client ${id} token revoked by admin ${req.user.username}`);
+
+    res.json({
+      success: true,
+      message: 'Client token revoked successfully'
+    });
+  } catch (error: any) {
+    logger.error('Error revoking client token:', error);
+    res.status(500).json({
+      error: 'Failed to revoke client token',
+      message: error.message
+    });
   }
 });
 
@@ -1548,6 +2369,14 @@ app.get('/api/privacy-policy', readLimiter, (req, res) => {
     connectedAt: new Date().toISOString(),
   };
 
+  // Register client socket for client-specific notifications
+  // Extract clientId from socket auth data (if client token was used)
+  const clientId = (socket as any).clientId;
+  if (clientId) {
+    registerClientSocket(clientId, socket);
+    logger.info(`[WebSocket] Client ${clientId} registered for real-time notifications`);
+  }
+
   // Subscribe to real-time updates
   socket.on('subscribe', (data) => {
     try {
@@ -1691,6 +2520,13 @@ app.get('/api/privacy-policy', readLimiter, (req, res) => {
   // Disconnect handler
   socket.on('disconnect', (reason) => {
     console.log(`[WebSocket] User disconnected: ${user?.username} (${socket.id}), reason: ${reason}`);
+
+    // Unregister client socket if it was a client connection
+    const clientId = (socket as any).clientId;
+    if (clientId) {
+      unregisterClientSocket(clientId);
+      logger.info(`[WebSocket] Client ${clientId} unregistered on disconnect`);
+    }
 
     // Log disconnection
     const disconnectInfo = {

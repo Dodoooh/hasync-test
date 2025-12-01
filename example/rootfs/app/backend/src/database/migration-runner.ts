@@ -344,7 +344,7 @@ export function runMigrationCLI(dbPath: string): void {
         console.log('✓ All migrations verified successfully');
       } else {
         console.log('✗ Migration verification failed:');
-        verification.issues.forEach(issue => console.log(`  - ${issue}`);
+        verification.issues.forEach(issue => console.log(`  - ${issue}`));
         process.exit(1);
       }
       break;
