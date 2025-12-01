@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.17
+
+- **DEBUG: Enhanced WebSocket connection logging**
+- Added detailed debug logs for WebSocket authentication
+- Shows origin being checked and allowed origins list
+- Shows whether token is present and from which source
+- Shows exact rejection reason (origin, token, rate limit)
+- Logs show ✅ SUCCESS or ❌ REJECTED with clear reasons
+- Helps diagnose WebSocket connection issues
+- Check backend logs to see why connection fails
+
 ## 1.3.16
 
 - **BUGFIX: Pairing endpoint 500 error fixed**

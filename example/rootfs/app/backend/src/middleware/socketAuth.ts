@@ -62,8 +62,11 @@ setInterval(() => {
  */
 export function socketAuthMiddleware(socket: Socket, next: (err?: ExtendedError) => void): void {
   try {
+    console.log('[WebSocket] New connection attempt from:', socket.handshake.address);
+
     // Rate limit check
     if (!rateLimitConnection(socket)) {
+      console.warn('[WebSocket] Rate limit exceeded for:', socket.handshake.address);
       const error = new Error('Too many connection attempts. Please try again later.') as ExtendedError;
       error.data = { code: 'RATE_LIMIT_EXCEEDED' };
       return next(error);
@@ -73,8 +76,12 @@ export function socketAuthMiddleware(socket: Socket, next: (err?: ExtendedError)
     const origin = socket.handshake.headers.origin;
     const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'];
 
+    console.log('[WebSocket] Origin:', origin || 'none');
+    console.log('[WebSocket] Allowed origins:', allowedOrigins.join(', '));
+
     if (origin && !allowedOrigins.includes(origin)) {
-      console.warn(`[WebSocket] Rejected connection from unauthorized origin: ${origin}`);
+      console.warn(`[WebSocket] ❌ REJECTED - Unauthorized origin: ${origin}`);
+      console.warn('[WebSocket] Allowed origins are:', allowedOrigins.join(', '));
       const error = new Error('Unauthorized origin') as ExtendedError;
       error.data = { code: 'INVALID_ORIGIN' };
       return next(error);
@@ -83,18 +90,22 @@ export function socketAuthMiddleware(socket: Socket, next: (err?: ExtendedError)
     // Extract token from auth object or query
     const token = socket.handshake.auth?.token || socket.handshake.query?.token as string;
 
+    console.log('[WebSocket] Token present:', !!token);
+    console.log('[WebSocket] Token source:', socket.handshake.auth?.token ? 'auth' : socket.handshake.query?.token ? 'query' : 'none');
+
     if (!token) {
-      console.warn('[WebSocket] Connection attempt without token');
+      console.warn('[WebSocket] ❌ REJECTED - No token provided');
       const error = new Error('Authentication required') as ExtendedError;
       error.data = { code: 'NO_TOKEN' };
       return next(error);
     }
 
     // Verify JWT token
+    console.log('[WebSocket] Verifying token...');
     const decoded = verifyAccessToken(token);
 
     if (!decoded) {
-      console.warn('[WebSocket] Invalid token provided');
+      console.warn('[WebSocket] ❌ REJECTED - Invalid or expired token');
       const error = new Error('Invalid or expired token') as ExtendedError;
       error.data = { code: 'INVALID_TOKEN' };
       return next(error);
@@ -106,7 +117,7 @@ export function socketAuthMiddleware(socket: Socket, next: (err?: ExtendedError)
       role: decoded.role,
     };
 
-    console.log(`[WebSocket] User authenticated: ${decoded.username} (${socket.id})`);
+    console.log(`[WebSocket] ✅ SUCCESS - User authenticated: ${decoded.username} (${socket.id})`);
     next();
   } catch (error: any) {
     console.error('[WebSocket] Authentication error:', error.message);

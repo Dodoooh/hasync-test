@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.16** - Fixed pairing endpoint CSRF issue
+✅ **WORKING v1.3.17** - Added WebSocket debug logging for troubleshooting
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
