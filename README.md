@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.9** - Configurable admin credentials, no default passwords
+✅ **WORKING v1.3.10** - Fixed: Admin credentials now properly read from config
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.10
+
+- **BUGFIX: Admin credentials now properly exported from config**
+- Fixed: run.sh now reads admin_username and admin_password from addon configuration
+- Fixed: Environment variables ADMIN_USERNAME and ADMIN_PASSWORD now properly set
+- Added logging to show configured admin username on startup
+- Addon now starts correctly when credentials are configured
+
 ## 1.3.9
 
 - **CONFIGURABLE ADMIN CREDENTIALS: Secure user management**

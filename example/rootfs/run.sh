@@ -6,6 +6,8 @@
 bashio::log.info "Starting HAsync..."
 
 # Get configuration from add-on options
+ADMIN_USERNAME=$(bashio::config 'admin_username')
+ADMIN_PASSWORD=$(bashio::config 'admin_password')
 JWT_SECRET=$(bashio::config 'jwt_secret')
 DATABASE_PATH=$(bashio::config 'database_path')
 LOG_LEVEL=$(bashio::config 'log_level')
@@ -13,6 +15,8 @@ MAX_CLIENTS=$(bashio::config 'max_clients')
 RATE_LIMIT=$(bashio::config 'rate_limit')
 
 # Export configuration as environment variables
+export ADMIN_USERNAME
+export ADMIN_PASSWORD
 export JWT_SECRET
 export DATABASE_PATH
 export LOG_LEVEL
@@ -34,6 +38,7 @@ export ALLOWED_ORIGINS="${CORS_ORIGINS}"
 bashio::log.info "CORS origins configured for: ${ALLOWED_ORIGINS}"
 
 bashio::log.info "Configuration loaded:"
+bashio::log.info "- Admin User: ${ADMIN_USERNAME}"
 bashio::log.info "- Database: ${DATABASE_PATH}"
 bashio::log.info "- Log Level: ${LOG_LEVEL}"
 bashio::log.info "- Max Clients: ${MAX_CLIENTS}"
