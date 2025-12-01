@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-🔄 **UPDATE TEST v1.0.2** - Removed image field, forces local build
+🔄 **UPDATE TEST v1.0.3** - Added HAsync run.sh startup script
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
@@ -27,8 +27,9 @@ _Advanced Home Assistant management interface_
 
 ✅ **Step 1**: Name changed to HAsync
 ✅ **Step 2**: Dockerfile updated with Node.js, npm, TypeScript support
-🔄 **Step 2c**: Removed pre-built image reference (v1.0.2)
-⏳ **Step 3**: Will add HAsync app files next
+✅ **Step 2c**: Removed pre-built image reference
+🔄 **Step 3a**: Added HAsync run.sh startup script (v1.0.3)
+⏳ **Step 3b**: Will add app files next
 
 <!--
 
