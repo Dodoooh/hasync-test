@@ -1,0 +1,11 @@
+# Development
+.claude-flow/
+.swarm/
+.vscode/
+.devcontainer.json
+.DS_Store
+
+# IDE
+*.swp
+*.swo
+*~
