@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.20';
+const VERSION = '1.3.21';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -572,14 +572,24 @@ app.get('/api/health', (_req, res) => {
   res.json(health);
 });
 
-// Basic pairing endpoint (renamed to match frontend) - auth limiter for security
-// NOTE: No CSRF protection needed - this is a public endpoint (rate-limited only)
-app.post('/api/pairing/create', authLimiter, (_req, res) => {
+// Pairing endpoint - Admin must be logged in to generate PIN
+// SECURITY: Only authenticated admin can generate pairing PINs
+// Flow: Admin login → Generate PIN → Enter PIN on other device → Other device pairs
+app.post('/api/pairing/create', authLimiter, authenticate, (req, res) => {
+  // Only admin can generate pairing PINs
+  if (req.user.role !== 'admin') {
+    logger.warn(`Non-admin user ${req.user.username} tried to generate pairing PIN`);
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Only admin users can generate pairing PINs'
+    });
+  }
+
   const pin = Math.floor(100000 + Math.random() * 900000).toString();
   const sessionId = `pairing_${Date.now()}`;
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
-  console.log(`Generated pairing session: ${sessionId}, PIN: ${pin}`);
+  console.log(`[Pairing] Admin ${req.user.username} generated PIN: ${pin} (session: ${sessionId})`);
 
   res.json({
     id: sessionId,

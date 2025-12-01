@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.3.21
+
+- **SECURITY FIX: Pairing endpoint now requires admin authentication**
+- Problem: /api/pairing/create was public - anyone could generate PINs
+- This was a security vulnerability - pairing should be admin-only
+- Solution: Added authenticate middleware + admin role check
+- Only logged-in admin users can generate pairing PINs
+- Correct flow:
+  1. Admin logs into frontend (gets JWT token)
+  2. Admin clicks "Generate PIN" button
+  3. Frontend sends POST /api/pairing/create with JWT token
+  4. Backend verifies admin role and generates PIN
+  5. Admin enters PIN on other device
+  6. Other device uses PIN to pair via WebSocket
+- Enhanced logging: Shows which admin generated which PIN
+- Trying without auth returns 401 Unauthorized
+- Trying as non-admin returns 403 Forbidden
+- Rate limiting still applies (100 requests / 15 minutes)
+
 ## 1.3.20
 
 - **COMPLETE FIX: socketAuth middleware now allows internal networks**
