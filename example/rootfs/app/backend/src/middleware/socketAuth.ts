@@ -72,19 +72,33 @@ export function socketAuthMiddleware(socket: Socket, next: (err?: ExtendedError)
       return next(error);
     }
 
-    // Validate origin
+    // Validate origin - allow internal networks (same logic as Socket.IO CORS and HTTP CORS)
     const origin = socket.handshake.headers.origin;
     const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'];
 
     console.log('[WebSocket] Origin:', origin || 'none');
     console.log('[WebSocket] Allowed origins:', allowedOrigins.join(', '));
 
-    if (origin && !allowedOrigins.includes(origin)) {
-      console.warn(`[WebSocket] ❌ REJECTED - Unauthorized origin: ${origin}`);
-      console.warn('[WebSocket] Allowed origins are:', allowedOrigins.join(', '));
-      const error = new Error('Unauthorized origin') as ExtendedError;
-      error.data = { code: 'INVALID_ORIGIN' };
-      return next(error);
+    if (origin) {
+      // Check if origin is in allowed list OR is an internal network IP
+      const isOriginAllowed = allowedOrigins.includes(origin);
+      const isInternalOrigin = origin.includes('://10.') ||
+                               origin.includes('://172.') ||
+                               origin.includes('://192.168.') ||
+                               origin.includes('://localhost') ||
+                               origin.includes('://127.0.0.1');
+
+      if (!isOriginAllowed && !isInternalOrigin) {
+        console.warn(`[WebSocket] ❌ REJECTED - Unauthorized origin: ${origin}`);
+        console.warn('[WebSocket] Allowed origins are:', allowedOrigins.join(', '));
+        const error = new Error('Unauthorized origin') as ExtendedError;
+        error.data = { code: 'INVALID_ORIGIN' };
+        return next(error);
+      }
+
+      if (isInternalOrigin) {
+        console.log(`[WebSocket] ✅ ACCEPTED - Internal network origin: ${origin}`);
+      }
     }
 
     // Extract token from auth object or query

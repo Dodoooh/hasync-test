@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.3.20
+
+- **COMPLETE FIX: socketAuth middleware now allows internal networks**
+- Problem: v1.3.19 fixed Socket.IO CORS but socketAuth had separate origin check
+- Two different CORS checks were happening:
+  1. Socket.IO CORS (index-simple.ts) ✅ FIXED in v1.3.19
+  2. socketAuth middleware (socketAuth.ts) ❌ STILL BLOCKING
+- socketAuth.ts was only checking allowedOrigins list (no internal network logic)
+- Solution: Added same internal network check to socketAuth middleware
+- Check if origin is in allowedOrigins OR is internal network
+- Internal network check: `://10.` OR `://172.` OR `://192.168.`
+- Also allows localhost and 127.0.0.1 explicitly
+- Enhanced logging: Shows ✅ ACCEPTED for internal network origins
+- Now ALL THREE layers allow internal networks:
+  - HTTP CORS ✅
+  - Socket.IO CORS ✅
+  - socketAuth middleware ✅
+- WebSocket connections from internal networks now FULLY work!
+- No more "Unauthorized origin" error in socketAuth
+
 ## 1.3.19
 
 - **DEFINITIVE FIX: WebSocket CORS now allows internal networks like HTTP CORS does**
