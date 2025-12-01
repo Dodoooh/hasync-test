@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-🔄 **UPDATE TEST v1.1.1** - Node.js 18 without verification step
+🔄 **UPDATE TEST v1.1.2** - Node.js with proper symlinks in single RUN
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

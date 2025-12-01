@@ -20,10 +20,10 @@ RUN apk add --no-cache \
 RUN curl -fsSL "https://nodejs.org/dist/v18.20.5/node-v18.20.5-linux-x64.tar.xz" -o /tmp/node.tar.xz \
     && mkdir -p /usr/local/lib/nodejs \
     && tar -xJf /tmp/node.tar.xz -C /usr/local/lib/nodejs \
-    && rm /tmp/node.tar.xz
-
-# Add Node.js to PATH (verification will happen during npm install)
-ENV PATH="/usr/local/lib/nodejs/node-v18.20.5-linux-x64/bin:${PATH}"
+    && rm /tmp/node.tar.xz \
+    && ln -sf /usr/local/lib/nodejs/node-v18.20.5-linux-x64/bin/node /usr/local/bin/node \
+    && ln -sf /usr/local/lib/nodejs/node-v18.20.5-linux-x64/bin/npm /usr/local/bin/npm \
+    && ln -sf /usr/local/lib/nodejs/node-v18.20.5-linux-x64/bin/npx /usr/local/bin/npx
 
 # Execute during the build of the image
 ARG TEMPIO_VERSION BUILD_ARCH
