@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.15';
+const VERSION = '1.3.16';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -566,7 +566,8 @@ app.get('/api/health', (_req, res) => {
 });
 
 // Basic pairing endpoint (renamed to match frontend) - auth limiter for security
-app.post('/api/pairing/create', authLimiter, csrfProtection, (_req, res) => {
+// NOTE: No CSRF protection needed - this is a public endpoint (rate-limited only)
+app.post('/api/pairing/create', authLimiter, (_req, res) => {
   const pin = Math.floor(100000 + Math.random() * 900000).toString();
   const sessionId = `pairing_${Date.now()}`;
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();

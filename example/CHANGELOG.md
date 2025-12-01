@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.16
+
+- **BUGFIX: Pairing endpoint 500 error fixed**
+- Removed CSRF protection from `/api/pairing/create` endpoint
+- Problem: Pairing is a public endpoint but had CSRF middleware
+- CSRF requires either Bearer token OR CSRF token, but public endpoints have neither
+- Solution: Removed csrfProtection middleware from pairing endpoint
+- Endpoint is already protected by authLimiter (rate limiting)
+- Pairing now works in Swagger UI without authentication
+- Other endpoints still protected by conditional CSRF
+
 ## 1.3.15
 
 - **BUGFIX: WebSocket CORS configuration fixed**

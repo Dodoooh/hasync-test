@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.15** - Fixed WebSocket CORS configuration
+✅ **WORKING v1.3.16** - Fixed pairing endpoint CSRF issue
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
