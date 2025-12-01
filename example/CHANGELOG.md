@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.14
+
+- **SWAGGER UI: Improved authentication instructions**
+- Added clear step-by-step guide at top of Swagger UI
+- Login endpoint now titled "🔑 STEP 1: Login to get your Bearer token"
+- Detailed instructions on how to use username/password to get JWT token
+- No more confusion about "BearerAuth" - clear workflow explained
+- Updated example credentials to show "your-username/your-password"
+- Version number updated in swagger.yaml to 1.3.13
+
 ## 1.3.13
 
 - **BUGFIX: WebSocket connection to correct port**

@@ -1,11 +1,19 @@
 openapi: 3.0.0
 info:
   title: HAsync Backend API
-  version: 1.3.7
+  version: 1.3.13
   description: |
     HAsync - Home Assistant Manager Backend API
 
     Advanced Home Assistant management interface with client pairing and entity synchronization.
+
+    **🔐 How to Authenticate:**
+    1. Execute `/api/auth/login` with your username and password
+    2. Copy the `accessToken` from the response
+    3. Click "Authorize" button (top right)
+    4. Paste token in the "Value" field (no "Bearer" prefix needed!)
+    5. Click "Authorize" and "Close"
+    6. Now you can execute protected endpoints! 🎉
 
     **Features:**
     - Client authentication and pairing
@@ -90,8 +98,21 @@ paths:
   /auth/login:
     post:
       tags: [Authentication]
-      summary: User login
-      description: Authenticate user with username and password
+      summary: "🔑 STEP 1: Login to get your Bearer token"
+      description: |
+        **Start here!** This is your first step to use the API.
+
+        Authenticate with your configured username and password.
+        The response contains an `accessToken` - copy this token and use it in the "Authorize" button above.
+
+        **Steps:**
+        1. Click "Execute" below
+        2. Enter your username and password in the request body
+        3. Click "Execute" again
+        4. Copy the `accessToken` from the response
+        5. Click "Authorize" button (top right of this page)
+        6. Paste the token (Swagger UI adds "Bearer" automatically)
+        7. You're authenticated! ✅
       requestBody:
         required: true
         content:
@@ -104,11 +125,13 @@ paths:
               properties:
                 username:
                   type: string
-                  example: admin
+                  description: Your configured admin username
+                  example: your-username
                 password:
                   type: string
                   format: password
-                  example: password123
+                  description: Your configured admin password
+                  example: your-password
       responses:
         '200':
           description: Login successful

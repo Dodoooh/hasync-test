@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.13** - Fixed WebSocket connection to correct backend port
+✅ **WORKING v1.3.14** - Improved Swagger UI authentication instructions
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
