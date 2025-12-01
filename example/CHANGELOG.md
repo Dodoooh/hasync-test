@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.0.8
+
+- Complete HAsync application build in Dockerfile
+- Backend npm dependencies installed
+- Frontend built with Vite
+- Global tools installed (tsx, http-server)
+- Health check endpoint added
+- Ports 8099 and 5173 configured WITHOUT ingress
+
+## 1.0.7
+
+- Added ports and HAsync configuration options
+- Fixed v1.0.5 issue (ingress conflict removed)
+
+## 1.0.6
+
+- Reverted to stable v1.0.4 configuration
+
 ## 1.0.5
 
 - Integrated complete HAsync application
