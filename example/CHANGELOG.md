@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.7
+
+- **SWAGGER YAML COMPLETE REWRITE: Clean, accurate API documentation**
+- Problem: swagger.yaml documented many non-existent endpoints
+- Old swagger.yaml had endpoints like `/health/detailed`, `/auth/refresh`, `/ha/*` that don't exist
+- Causing 404 errors when users tried to Execute these endpoints
+- Solution: Created brand new swagger.yaml from scratch
+- Only documents endpoints that actually exist in the server
+- Verified every endpoint matches server routes
+- Clean, professional OpenAPI 3.0 specification
+- Proper tags, descriptions, security schemas
+- No more 404 errors - every documented endpoint works!
+- This is the FINAL, ACCURATE API documentation
+
 ## 1.3.6
 
 - **SWAGGER UI PATH FIX: Added /api prefix to server URL**
