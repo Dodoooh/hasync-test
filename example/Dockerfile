@@ -17,16 +17,16 @@ RUN apk add --no-cache \
     && rm -rf /var/cache/apk/*
 
 # Install Node.js 18.x (required for Vite and modern packages)
-ARG NODE_VERSION=18.20.5
-RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" -o /tmp/node.tar.xz \
+RUN curl -fsSL "https://nodejs.org/dist/v18.20.5/node-v18.20.5-linux-x64.tar.xz" -o /tmp/node.tar.xz \
     && mkdir -p /usr/local/lib/nodejs \
     && tar -xJf /tmp/node.tar.xz -C /usr/local/lib/nodejs \
-    && rm /tmp/node.tar.xz \
-    && ln -s "/usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-x64/bin/node" /usr/local/bin/node \
-    && ln -s "/usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-x64/bin/npm" /usr/local/bin/npm \
-    && ln -s "/usr/local/lib/nodejs/node-v${NODE_VERSION}-linux-x64/bin/npx" /usr/local/bin/npx \
-    && node --version \
-    && npm --version
+    && rm /tmp/node.tar.xz
+
+# Add Node.js to PATH
+ENV PATH="/usr/local/lib/nodejs/node-v18.20.5-linux-x64/bin:${PATH}"
+
+# Verify Node.js installation
+RUN node --version && npm --version
 
 # Execute during the build of the image
 ARG TEMPIO_VERSION BUILD_ARCH
