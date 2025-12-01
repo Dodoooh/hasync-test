@@ -24,3 +24,9 @@ RUN \
 
 # Copy root filesystem
 COPY rootfs /
+
+# Make run.sh executable
+RUN chmod a+x /run.sh
+
+# Use exec form for proper signal handling
+CMD ["/run.sh"]

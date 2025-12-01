@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-🔄 **UPDATE TEST v1.0.3** - Added HAsync run.sh startup script
+🔄 **UPDATE TEST v1.0.4** - Removed old example services
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
