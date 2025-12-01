@@ -24,18 +24,34 @@ export MAX_CLIENTS
 export RATE_LIMIT
 
 # Configure CORS to allow Home Assistant addon frontend
-# Get ALL network interfaces to ensure frontend can connect
-ALL_IPS=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.' || echo "127.0.0.1")
+# Use MULTIPLE methods to detect all network IPs
+bashio::log.info "Detecting network interfaces..."
+
+# Method 1: hostname -I (works in most environments)
+IPS_HOSTNAME=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.' || echo "")
+
+# Method 2: ip addr show (more reliable in containers)
+IPS_IP_ADDR=$(ip addr show 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '127.0.0.1' || echo "")
+
+# Method 3: ip route get (gets the primary outbound IP)
+PRIMARY_IP=$(ip route get 1.1.1.1 2>/dev/null | grep -oP '(?<=src\s)\d+(\.\d+){3}' || echo "")
+
+# Combine all detected IPs and remove duplicates
+ALL_IPS=$(echo -e "${IPS_HOSTNAME}\n${IPS_IP_ADDR}\n${PRIMARY_IP}" | sort -u | grep -E '^[0-9]+\.' || echo "127.0.0.1")
+
+bashio::log.info "Detected IPs: $(echo $ALL_IPS | tr '\n' ' ')"
+
+# Start with localhost
 CORS_ORIGINS="http://localhost:5173,http://127.0.0.1:5173,http://localhost:8099,http://127.0.0.1:8099"
 
-# Add all detected IPs for both ports
+# Add all detected IPs for both ports (HTTP and HTTPS)
 for IP in $ALL_IPS; do
-  CORS_ORIGINS="${CORS_ORIGINS},http://${IP}:5173,http://${IP}:8099"
+  CORS_ORIGINS="${CORS_ORIGINS},http://${IP}:5173,http://${IP}:8099,https://${IP}:5173,https://${IP}:8099"
 done
 
 export ALLOWED_ORIGINS="${CORS_ORIGINS}"
 
-bashio::log.info "CORS origins configured for: ${ALLOWED_ORIGINS}"
+bashio::log.info "CORS origins configured: ${ALLOWED_ORIGINS}"
 
 bashio::log.info "Configuration loaded:"
 bashio::log.info "- Admin User: ${ADMIN_USERNAME}"

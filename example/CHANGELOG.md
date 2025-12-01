@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.3.18
+
+- **BUGFIX: WebSocket CORS - Robust IP detection fixed connection issues**
+- Problem: `hostname -I` wasn't detecting network IPs in Docker container
+- WebSocket connections rejected: "Rejected origin: http://10.50.50.100:5173"
+- Allowed origins only had localhost/127.0.0.1, not actual network IP
+- Solution: Use MULTIPLE detection methods for maximum reliability:
+  - Method 1: `hostname -I` (works in most environments)
+  - Method 2: `ip addr show` (more reliable in containers)
+  - Method 3: `ip route get` (gets primary outbound IP)
+- Combine all detected IPs, remove duplicates
+- Add both HTTP and HTTPS variants for all detected IPs
+- Enhanced logging shows all detected IPs at startup
+- WebSocket connections now work from any network interface!
+- No more "bad response from server" error
+
 ## 1.3.17
 
 - **DEBUG: Enhanced WebSocket connection logging**
