@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.2.7';
+const VERSION = '1.2.8';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -429,16 +429,20 @@ try {
       }
     ];
 
-    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
-      customCss: '.swagger-ui .topbar { display: none }',
-      customSiteTitle: `HAsync API Documentation v${VERSION}`,
-      swaggerOptions: {
-        persistAuthorization: true,
-        displayRequestDuration: true,
-        tryItOutEnabled: true,
-        url: serverUrl + '/api-docs/swagger.json',
-      }
-    }));
+    // IMPORTANT: Use serveFiles to force local asset serving instead of CDN
+    // This prevents HTTPS/HTTP mixed content errors
+    app.use('/api-docs',
+      swaggerUi.serveFiles(swaggerDocument, {}),
+      swaggerUi.setup(swaggerDocument, {
+        customCss: '.swagger-ui .topbar { display: none }',
+        customSiteTitle: `HAsync API Documentation v${VERSION}`,
+        swaggerOptions: {
+          persistAuthorization: true,
+          displayRequestDuration: true,
+          tryItOutEnabled: true,
+        }
+      })
+    );
     logger.info(`Swagger UI available at /api-docs (v${VERSION}) [${protocol.toUpperCase()}]`);
   }
 } catch (error) {

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.8
+
+- **SWAGGER UI DEFINITIVE FIX: Local asset serving**
+- Changed from `swaggerUi.serve` to `swaggerUi.serveFiles()`
+- Forces Swagger UI to serve assets locally instead of from CDN
+- Eliminates HTTPS/HTTP mixed content errors completely
+- No more "TLS-Fehler" when loading swagger-ui.css, swagger-ui-bundle.js
+- API Docs now fully functional with local assets only
+
 ## 1.2.7
 
 - **SWAGGER UI FIX: Resolved HTTPS/HTTP asset loading issue**
