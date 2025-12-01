@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.3.24
+
+- **🚨 MAJOR SECURITY FIX: Added authentication to all sensitive endpoints**
+- Problem: Almost ALL endpoints were publicly accessible without login
+- Anyone could read entities, areas, clients, dashboards without authentication
+- **CRITICAL**: Anyone could read/write Home Assistant URL and token!
+- Security vulnerabilities identified:
+  1. `GET /api/entities` - PUBLIC (anyone could see HA entities)
+  2. `GET /api/areas` - PUBLIC (anyone could see areas)
+  3. `POST/PUT/PATCH/DELETE /api/areas/*` - Only CSRF, no authentication
+  4. `GET /api/clients` - PUBLIC (anyone could see client list)
+  5. `GET /api/dashboards` - PUBLIC (anyone could see dashboards)
+  6. 🔥 `GET/POST /api/config/ha` - PUBLIC (anyone could steal HA token!)
+- Solution: Implemented proper authentication and authorization
+  - **AUTHENTICATED USER (all logged-in users):**
+    - `GET /api/entities` - View entities
+    - `GET /api/areas` - View areas
+    - `GET /api/areas/:id/entities` - View area entities
+    - `GET /api/clients` - View clients
+    - `GET /api/dashboards` - View dashboards
+  - **ADMIN ONLY (admin role required):**
+    - `POST/PUT/PATCH/DELETE /api/areas/*` - Manage areas
+    - `GET/POST /api/config/ha` - View/modify HA configuration (CRITICAL!)
+    - `POST /api/pairing/create` - Generate pairing PIN (already protected)
+  - **PUBLIC (no authentication required):**
+    - `/api/health` - Health check
+    - `/api/csrf-token` - CSRF token
+    - `/api/auth/login` - Login endpoint
+    - `/api/auth/verify` - Token verification
+    - `/api/privacy-policy` - GDPR policy
+    - `/api-docs` - API documentation
+- All write operations require BOTH authentication AND CSRF protection
+- Admin operations return 403 Forbidden for non-admin users
+- Logged-out users get 401 Unauthorized
+- Frontend already sends JWT token (fixed in v1.3.23)
+- This is a CRITICAL security update - update immediately!
+
 ## 1.3.23
 
 - **FRONTEND FIX: JWT token now sent with pairing endpoint requests**

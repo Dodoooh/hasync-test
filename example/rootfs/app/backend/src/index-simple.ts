@@ -676,7 +676,8 @@ const getHAConfig = (): { url?: string; token?: string } => {
 };
 
 // Get entities - fetch from Home Assistant (NO MOCK DATA)
-app.get('/api/entities', readLimiter, asyncHandler(async (_req: any, res: any) => {
+// SECURITY: Requires authentication - only logged-in users can access entities
+app.get('/api/entities', readLimiter, authenticate, asyncHandler(async (_req: any, res: any) => {
   const haConfig = getHAConfig();
   const haUrl = haConfig.url;
   const haToken = haConfig.token;
@@ -711,7 +712,8 @@ app.get('/api/entities', readLimiter, asyncHandler(async (_req: any, res: any) =
 }));
 
 // Get areas - from database with optional enabled filter (SECURE - uses prepared statement)
-app.get('/api/areas', readLimiter, (req, res) => {
+// SECURITY: Requires authentication - only logged-in users can view areas
+app.get('/api/areas', readLimiter, authenticate, (req, res) => {
   try {
     const { enabled } = req.query;
 
@@ -738,7 +740,15 @@ app.get('/api/areas', readLimiter, (req, res) => {
 });
 
 // Create area (WITH INPUT VALIDATION)
-app.post('/api/areas', writeLimiter, csrfProtection, (req, res) => {
+// SECURITY: Requires admin authentication - only admin can create areas
+app.post('/api/areas', writeLimiter, csrfProtection, authenticate, (req, res) => {
+  // Only admin can create areas
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Only admin users can create areas'
+    });
+  }
   try {
     const { name, entityIds, isEnabled = true } = req.body;
 
@@ -786,7 +796,12 @@ app.post('/api/areas', writeLimiter, csrfProtection, (req, res) => {
 });
 
 // Update area (WITH INPUT VALIDATION)
-app.put('/api/areas/:id', writeLimiter, csrfProtection, asyncHandler(async (req: any, res: any) => {
+// SECURITY: Requires admin authentication - only admin can update areas
+app.put('/api/areas/:id', writeLimiter, csrfProtection, authenticate, asyncHandler(async (req: any, res: any) => {
+  // Only admin can update areas
+  if (req.user.role !== 'admin') {
+    throw new Error('Forbidden: Only admin users can update areas');
+  }
   const { id } = req.params;
   const { name, entityIds, isEnabled } = req.body;
 
@@ -827,7 +842,15 @@ app.put('/api/areas/:id', writeLimiter, csrfProtection, asyncHandler(async (req:
 }));
 
 // PATCH area - for partial updates (WITH INPUT VALIDATION)
-app.patch('/api/areas/:id', writeLimiter, csrfProtection, (req, res) => {
+// SECURITY: Requires admin authentication - only admin can update areas
+app.patch('/api/areas/:id', writeLimiter, csrfProtection, authenticate, (req, res) => {
+  // Only admin can update areas
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Only admin users can update areas'
+    });
+  }
   try {
     const { id } = req.params;
     const updates = req.body;
@@ -913,7 +936,15 @@ app.patch('/api/areas/:id', writeLimiter, csrfProtection, (req, res) => {
 });
 
 // Toggle area enabled/disabled
-app.patch('/api/areas/:id/toggle', writeLimiter, csrfProtection, (req, res) => {
+// SECURITY: Requires admin authentication - only admin can toggle areas
+app.patch('/api/areas/:id/toggle', writeLimiter, csrfProtection, authenticate, (req, res) => {
+  // Only admin can toggle areas
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Only admin users can toggle areas'
+    });
+  }
   try {
     const { id } = req.params;
     const { enabled } = req.body;
@@ -946,7 +977,15 @@ app.patch('/api/areas/:id/toggle', writeLimiter, csrfProtection, (req, res) => {
 });
 
 // Reorder entities in an area
-app.patch('/api/areas/:id/reorder', writeLimiter, csrfProtection, async (req, res) => {
+// SECURITY: Requires admin authentication - only admin can reorder area entities
+app.patch('/api/areas/:id/reorder', writeLimiter, csrfProtection, authenticate, async (req, res) => {
+  // Only admin can reorder areas
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Only admin users can reorder area entities'
+    });
+  }
   try {
     const { id } = req.params;
     const { entityIds } = req.body;
@@ -1013,7 +1052,8 @@ app.patch('/api/areas/:id/reorder', writeLimiter, csrfProtection, async (req, re
 });
 
 // Get entities in an area with details from Home Assistant
-app.get('/api/areas/:id/entities', readLimiter, async (req, res) => {
+// SECURITY: Requires authentication - only logged-in users can view area entities
+app.get('/api/areas/:id/entities', readLimiter, authenticate, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -1077,7 +1117,15 @@ app.get('/api/areas/:id/entities', readLimiter, async (req, res) => {
 });
 
 // Delete area
-app.delete('/api/areas/:id', writeLimiter, csrfProtection, (req, res) => {
+// SECURITY: Requires admin authentication - only admin can delete areas
+app.delete('/api/areas/:id', writeLimiter, csrfProtection, authenticate, (req, res) => {
+  // Only admin can delete areas
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Only admin users can delete areas'
+    });
+  }
   try {
     const { id } = req.params;
 
@@ -1096,7 +1144,8 @@ app.delete('/api/areas/:id', writeLimiter, csrfProtection, (req, res) => {
 });
 
 // Get dashboards
-app.get('/api/dashboards', readLimiter, (_req, res) => {
+// SECURITY: Requires authentication - only logged-in users can view dashboards
+app.get('/api/dashboards', readLimiter, authenticate, (_req, res) => {
   res.json([
     { dashboard_id: 'default', name: 'Default Dashboard' },
     { dashboard_id: 'mobile', name: 'Mobile Dashboard' }
@@ -1142,8 +1191,15 @@ app.post('/api/auth/login', authLimiter, (req, res) => {
 });
 
 // Save HA config endpoint
-// TEMPORARY: CSRF disabled for testing proxy compatibility
-app.post('/api/config/ha', writeLimiter, (req, res) => {
+// SECURITY: CRITICAL - Requires admin authentication - HA token is sensitive!
+app.post('/api/config/ha', writeLimiter, csrfProtection, authenticate, (req, res) => {
+  // Only admin can modify HA configuration
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Only admin users can modify Home Assistant configuration'
+    });
+  }
   try {
     const { url, token } = req.body;
     const config = JSON.stringify({ url, token });
@@ -1160,7 +1216,15 @@ app.post('/api/config/ha', writeLimiter, (req, res) => {
 });
 
 // Get HA config endpoint
-app.get('/api/config/ha', readLimiter, (_req, res) => {
+// SECURITY: CRITICAL - Requires admin authentication - HA token is sensitive!
+app.get('/api/config/ha', readLimiter, authenticate, (_req, res) => {
+  // Only admin can view HA configuration (contains sensitive token)
+  if (_req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Only admin users can view Home Assistant configuration'
+    });
+  }
   try {
     const haConfig = getHAConfig();
     res.json(haConfig);
@@ -1222,7 +1286,8 @@ app.get('/api/auth/verify', authLimiter, (req, res) => {
 });
 
 // Get clients (fixed to return array instead of object)
-app.get('/api/clients', readLimiter, (_req, res) => {
+// SECURITY: Requires authentication - only logged-in users can view clients
+app.get('/api/clients', readLimiter, authenticate, (_req, res) => {
   try {
     if (db) {
       // ✅ SECURE: Using prepared statement

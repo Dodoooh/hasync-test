@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.23** - Fixed frontend JWT token transmission for pairing endpoint
+✅ **WORKING v1.3.24** - MAJOR SECURITY FIX: All endpoints now require authentication
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
