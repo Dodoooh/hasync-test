@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.2
+
+- **FIX: CSRF token compatibility with http-server proxy**
+- Changed CSRF sameSite from 'strict' to 'lax' for proxy compatibility
+- Disabled secure cookie requirement for HTTP (internal network)
+- Fixes "invalid csrf token" error when saving Home Assistant config
+- Allows cookies to flow through http-server proxy correctly
+
 ## 1.2.1
 
 - **EMERGENCY FIX: Permissive CORS for all internal network origins**

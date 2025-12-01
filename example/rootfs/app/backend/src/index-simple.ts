@@ -335,8 +335,8 @@ app.use(createRequestLoggerMiddleware({ allowedOrigins }));
 const csrfProtection = csrf({
   cookie: {
     httpOnly: true, // Prevent JavaScript access to cookie
-    secure: tlsOptions.enabled, // Only send over HTTPS when TLS is enabled
-    sameSite: 'strict', // Prevent CSRF by not sending cookie in cross-site requests
+    secure: false, // Allow over HTTP for Home Assistant addon (internal network)
+    sameSite: 'lax', // Less strict for proxy compatibility (was 'strict')
     maxAge: 3600000 // 1 hour token expiration
   }
 });

@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.2.1** - Permissive CORS for internal networks with comprehensive logging
+✅ **WORKING v1.2.2** - Fixed CSRF token for proxy compatibility
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 
