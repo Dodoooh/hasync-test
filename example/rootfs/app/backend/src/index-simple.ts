@@ -264,14 +264,20 @@ app.use((_req, res, next) => {
   next();
 });
 
-// Middleware - Restrictive CORS configuration
+// Middleware - Permissive CORS for Home Assistant addon (internal network only)
 app.use(cors({
   origin: (origin, callback) => {
+    // Log all CORS requests for debugging
+    console.log(`[CORS] Request from origin: "${origin || 'no-origin'}"`);
+    console.log(`[CORS] Allowed origins:`, allowedOrigins);
+
     // SECURITY: Only allow requests without Origin header from localhost or trusted tools
     // This prevents bypassing CORS by omitting the Origin header
     if (!origin) {
       const referer = callback['req']?.headers?.referer;
       const host = callback['req']?.headers?.host;
+
+      console.log(`[CORS] No origin header - Host: ${host}, Referer: ${referer}`);
 
       // Allow localhost, internal IPs, and Home Assistant addon network
       const isLocalhost = host?.includes('localhost') || host?.includes('127.0.0.1');
@@ -281,20 +287,27 @@ app.use(cors({
       const isProxied = forwardedFor !== undefined; // Allow proxied requests (http-server)
 
       if (isLocalhost || isInternalIP || isTrustedTool || isProxied) {
+        console.log(`[CORS] ✅ Allowed (no origin): localhost=${isLocalhost}, internal=${isInternalIP}, proxied=${isProxied}`);
         callback(null, true);
         return;
       }
 
       // Reject all other requests without Origin header
+      console.error(`[CORS] ❌ Rejected: No origin header and not from trusted source`);
       callback(new Error('Origin header required for security'));
       return;
     }
 
-    if (allowedOrigins.includes(origin)) {
+    // Check if origin is in allowedOrigins list OR is an internal IP
+    const isOriginAllowed = allowedOrigins.includes(origin);
+    const isInternalOrigin = origin.includes('://10.') || origin.includes('://172.') || origin.includes('://192.168.') || origin.includes('://localhost') || origin.includes('://127.0.0.1');
+
+    if (isOriginAllowed || isInternalOrigin) {
+      console.log(`[CORS] ✅ Allowed: ${origin} (in-list=${isOriginAllowed}, internal=${isInternalOrigin})`);
       callback(null, true);
     } else {
-      console.error(`[CORS DEBUG] Origin rejected: "${origin}"`);
-      console.error(`[CORS DEBUG] Allowed origins:`, allowedOrigins);
+      console.error(`[CORS] ❌ Rejected: "${origin}"`);
+      console.error(`[CORS] Allowed origins:`, allowedOrigins);
       callback(new Error('Not allowed by CORS'));
     }
   },

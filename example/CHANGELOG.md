@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.1
+
+- **EMERGENCY FIX: Permissive CORS for all internal network origins**
+- Allow ANY origin from internal networks (10.x, 172.x, 192.168.x, localhost)
+- Comprehensive CORS debugging logs for every request
+- Shows origin, allowed origins, and decision (✅ allowed / ❌ rejected)
+- No longer requires exact origin match for internal IPs
+- Maintains security by only allowing internal network ranges
+
 ## 1.2.0
 
 - **COMPREHENSIVE NETWORK DETECTION FOR CORS**
