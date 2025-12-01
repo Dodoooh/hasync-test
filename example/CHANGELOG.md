@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.12
+
+- **UI IMPROVEMENTS: Version display and dashboard icons**
+- LoginForm now shows dynamic version number (fetched from /api/health)
+- Version displayed at bottom: "HAsync v1.3.12"
+- Changed Areas icon from GroupIcon (people) to DashboardIcon (dashboard)
+- More intuitive icon representing areas/rooms in the navigation
+- Version automatically updates with each release
+
 ## 1.3.11
 
 - **FEATURE: Open Web UI button**

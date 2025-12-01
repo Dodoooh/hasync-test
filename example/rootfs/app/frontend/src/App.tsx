@@ -18,7 +18,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { useTheme, useMediaQuery } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import DevicesIcon from '@mui/icons-material/DevicesOther';
-import GroupIcon from '@mui/icons-material/Group';
+import DashboardIcon from '@mui/icons-material/Dashboard';
 import QrCodeIcon from '@mui/icons-material/QrCode2';
 import LogoutIcon from '@mui/icons-material/Logout';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -46,7 +46,7 @@ const LoadingFallback: React.FC = () => (
 
 const navItems = [
   { label: 'Entities', path: '/entities', icon: <SettingsIcon /> },
-  { label: 'Areas', path: '/areas', icon: <GroupIcon /> },
+  { label: 'Areas', path: '/areas', icon: <DashboardIcon /> },
   { label: 'Clients', path: '/clients', icon: <DevicesIcon /> },
   { label: 'Pairing', path: '/pairing', icon: <QrCodeIcon /> },
   { label: 'Settings', path: '/settings', icon: <SettingsIcon /> },

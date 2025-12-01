@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-✅ **WORKING v1.3.11** - Added "Open Web UI" button for easy access
+✅ **WORKING v1.3.12** - Dynamic version display + Dashboard icons for Areas
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

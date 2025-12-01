@@ -21,6 +21,15 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [version, setVersion] = useState('...');
+
+  // Fetch version on mount
+  React.useEffect(() => {
+    fetch('/api/health')
+      .then(res => res.json())
+      .then(data => setVersion(data.version || '1.0.0'))
+      .catch(() => setVersion('1.0.0'));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,7 +179,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
 
         <Box sx={{ mt: 4, textAlign: 'center' }}>
           <Typography variant="caption" color="text.secondary">
-            Powered by HAsync • v1.0.0
+            HAsync v{version}
           </Typography>
         </Box>
       </Paper>

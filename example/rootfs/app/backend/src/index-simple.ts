@@ -60,7 +60,7 @@ import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.11';
+const VERSION = '1.3.12';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
