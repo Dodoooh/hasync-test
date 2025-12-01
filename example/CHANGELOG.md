@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.5
+
+- **CLEAN LOGS: Removed http-server proxy verbosity**
+- Added `--silent` flag to http-server (no more frontend proxy logs)
+- Fixed backup directory error by ensuring `/app/backups` exists at startup
+- Logs now show only important backend events, frontend proxy is silent
+- Clean production-ready log output for better debugging
+
 ## 1.2.4
 
 - **SMART LOGGING SYSTEM: Dramatically reduced log verbosity**

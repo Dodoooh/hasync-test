@@ -39,6 +39,11 @@ bashio::log.info "- Log Level: ${LOG_LEVEL}"
 bashio::log.info "- Max Clients: ${MAX_CLIENTS}"
 bashio::log.info "- Rate Limit: ${RATE_LIMIT}"
 
+# Ensure backup directory exists
+mkdir -p /app/backups
+chmod 755 /app/backups
+bashio::log.info "✓ Backup directory ready: /app/backups"
+
 # Start backend server in background
 cd /app/backend
 bashio::log.info "Starting backend server on port 8099..."
@@ -48,7 +53,7 @@ BACKEND_PID=$!
 # Start frontend server
 cd /app/frontend
 bashio::log.info "Starting frontend server on port 5173..."
-http-server dist -p 5173 --proxy http://localhost:8099 &
+http-server dist -p 5173 --proxy http://localhost:8099 --silent &
 FRONTEND_PID=$!
 
 # Wait for any process to exit
