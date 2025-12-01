@@ -1,24 +1,32 @@
-# Example Home Assistant add-on repository
+# HAsync - Home Assistant Manager
 
-This repository can be used as a "blueprint" for add-on development to help you get started.
+🔄 **UPDATE TEST v1.0.0** - Incremental development in progress
 
-Add-on documentation: <https://developers.home-assistant.io/docs/add-ons>
+Advanced Home Assistant management interface with client pairing and entity synchronization.
 
-[![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fhome-assistant%2Faddons-example)
+## Installation
+
+Add this repository to Home Assistant via **Settings** > **Add-ons** > **Add-on Store** > **⋮** > **Repositories**:
+
+```txt
+https://github.com/Dodoooh/hasync-test
+```
 
 ## Add-ons
 
 This repository contains the following add-ons
 
-### [Example add-on](./example)
+### [HAsync Manager](./example)
 
-![Supports aarch64 Architecture][aarch64-shield]
 ![Supports amd64 Architecture][amd64-shield]
-![Supports armhf Architecture][armhf-shield]
-![Supports armv7 Architecture][armv7-shield]
 ![Supports i386 Architecture][i386-shield]
 
-_Example add-on to use as a blueprint for new add-ons._
+_Advanced Home Assistant management interface_
+
+## Development Status
+
+✅ **Step 1 COMPLETE**: Name changed to HAsync
+⏳ **Step 2**: Adding HAsync functionality incrementally
 
 <!--
 
