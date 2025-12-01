@@ -1,6 +1,6 @@
 # HAsync - Home Assistant Manager
 
-🔄 **UPDATE TEST v1.1.5** - Fixed ARG BUILD_FROM placement
+🔄 **UPDATE TEST v1.1.6** - Added libstdc++ from edge (LIBRARY FIX)
 
 Advanced Home Assistant management interface with client pairing and entity synchronization.
 

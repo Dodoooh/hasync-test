@@ -100,17 +100,20 @@ RUN apk add --no-cache \
     && rm -rf /tmp/*
 
 # ------------------------------------------------------------------------------
-# Install Node.js 18 from Edge Repository
+# Install Node.js 18 from Edge Repository with Compatible Libraries
 # ------------------------------------------------------------------------------
-# Install Node.js 18 separately with careful version pinning
-# This minimizes conflicts with the base Alpine 3.15 system
+# CRITICAL: Node 18+ is REQUIRED (bcrypt@6, tsx, helmet@8 all need >=18)
+# Install Node.js 18 WITH matching C++ standard library to avoid symbol conflicts
+# Alpine edge Node 24 requires libstdc++ 13, but we also install libgcc for compatibility
 RUN apk add --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/main \
     nodejs \
     npm \
+    libstdc++ \
+    libgcc \
     # Clean up package cache immediately
     && rm -rf /var/cache/apk/* \
     && rm -rf /tmp/* \
-    # Verify Node.js version
+    # Verify Node.js version (should be 18+)
     && node --version \
     && npm --version
 
