@@ -1,3 +1,42 @@
+## v1.4.1 (2025-12-02) - tvOS Pairing Enhancement 📱
+
+### NEW FEATURES ✨
+
+#### PIN-Based Session Lookup for tvOS Clients
+- **Simplified Pairing Flow**: tvOS app can now use just the 6-digit PIN to verify pairing
+- **Smart Session Detection**: Backend automatically detects PIN format and looks up the session
+- **Backward Compatible**: Full sessionId format still supported for existing clients
+- **Improved UX**: No need to manually enter long session IDs on Apple TV remote
+
+**Technical Implementation:**
+```typescript
+// Backend automatically detects PIN vs sessionId
+if (/^\d{6}$/.test(sessionId)) {
+  session = db.prepare('SELECT * FROM pairing_sessions WHERE pin = ? AND status = ?')
+    .get(sessionId, 'pending');
+} else {
+  session = db.prepare('SELECT * FROM pairing_sessions WHERE id = ?')
+    .get(sessionId);
+}
+```
+
+**API Changes:**
+- `POST /api/pairing/:sessionId/verify` now accepts PIN as sessionId parameter
+- Returns actual sessionId in response for subsequent polling
+- Maintains full backward compatibility with existing clients
+
+**Benefits:**
+- ✅ Simpler tvOS integration
+- ✅ Better user experience on TV remotes
+- ✅ Fewer API calls (no trial-and-error with multiple formats)
+- ✅ Cleaner client code
+
+**Files Modified:**
+- `backend/src/index-simple.ts` - Added PIN lookup logic
+- Enhanced logging for PIN-based lookups
+
+---
+
 ## v1.4.0 (2025-12-02) - MAJOR RELEASE 🎉
 
 ### NEW FEATURES ✨
