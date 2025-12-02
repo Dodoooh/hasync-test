@@ -1,3 +1,50 @@
+## v1.4.3 (2025-12-02) - Auto-Assign Home Assistant Areas 🏠
+
+### FEATURE ENHANCEMENT ✨
+
+#### Automatic Area Assignment During Pairing
+**NEW**: tvOS clients now receive ALL Home Assistant areas automatically when pairing - no manual assignment needed!
+
+**How It Works:**
+1. Client enters PIN and verifies
+2. Backend fetches all areas from Home Assistant
+3. Areas automatically assigned to client token
+4. Client can access all configured areas immediately
+
+**Implementation:**
+```typescript
+// Fetch all areas from Home Assistant during pairing
+const areas = await haService.getAreas();
+const assignedAreas = areas.map(area => area.area_id || area.id);
+
+// Assign to client token
+const clientToken = generateClientToken(clientId, assignedAreas);
+```
+
+**Benefits:**
+- ✅ **Zero Configuration**: No manual area assignment needed
+- 🏠 **Full Access**: Client gets all areas by default
+- 🔄 **Always Current**: Areas fetched fresh from Home Assistant
+- 📱 **Better UX**: Instant access to all areas after pairing
+
+**Backend Changes:**
+- Initialize HomeAssistantService on server start
+- Fetch areas from HA API during PIN verification
+- Assign all areas to client token automatically
+- Graceful fallback if HA unavailable (empty areas)
+
+**Files Modified:**
+- `backend/src/index-simple.ts` - Added HomeAssistantService initialization
+- Added automatic area fetching during pairing
+- Enhanced logging for area assignment
+
+**Migration Notes:**
+- Existing paired clients keep their assigned areas
+- New pairings get all areas automatically
+- Manual area management still possible via admin UI
+
+---
+
 ## v1.4.2 (2025-12-02) - Instant PIN Pairing 🚀
 
 ### BREAKING CHANGES 🔥

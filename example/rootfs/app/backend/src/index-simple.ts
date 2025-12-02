@@ -79,6 +79,7 @@ import {
   cleanupExpiredTokens
 } from './utils/tokenUtils';
 import { migratePairingTables, startPairingCleanupJob } from './database/migrate-pairing';
+import { HomeAssistantService } from './services/homeassistant';
 
 // Initialize logger
 const logger = createLogger('Server');
@@ -842,7 +843,23 @@ app.post('/api/pairing/:sessionId/verify', authLimiter, asyncHandler(async (req:
   // Generate CLIENT JWT token immediately (no admin approval needed)
   // PIN is secure enough: single-use, 5-minute expiry, admin-created
   const clientId = `client_${Date.now()}`;
-  const clientToken = generateClientToken(clientId, []); // Empty areas by default
+
+  // Fetch all areas from Home Assistant to assign to client
+  let assignedAreas: string[] = [];
+  try {
+    if (haService) {
+      const areas = await haService.getAreas();
+      assignedAreas = areas.map((area: any) => area.area_id || area.id);
+      logger.info(`[Pairing] Fetched ${assignedAreas.length} areas from Home Assistant`);
+    } else {
+      logger.warn('[Pairing] Home Assistant Service not initialized - no areas assigned');
+    }
+  } catch (error: any) {
+    logger.error(`[Pairing] Failed to fetch areas from Home Assistant: ${error.message}`);
+    // Continue with empty areas rather than failing the pairing
+  }
+
+  const clientToken = generateClientToken(clientId, assignedAreas);
   const tokenHash = hashToken(clientToken);
 
   // Create client in database
@@ -870,7 +887,7 @@ app.post('/api/pairing/:sessionId/verify', authLimiter, asyncHandler(async (req:
     timestamp,
     timestamp,
     1, // is_active
-    JSON.stringify([]), // Empty assigned areas by default
+    JSON.stringify(assignedAreas), // Assigned areas from Home Assistant
     JSON.stringify({
       deviceName: deviceName,
       sessionId: session.id,
@@ -1121,6 +1138,23 @@ const getHAConfig = (): { url?: string; token?: string } => {
   }
 
   return fallback;
+};
+
+// Initialize Home Assistant Service
+let haService: HomeAssistantService | null = null;
+const initializeHAService = () => {
+  const haConfig = getHAConfig();
+  if (haConfig.url && haConfig.token) {
+    haService = new HomeAssistantService({
+      url: haConfig.url,
+      token: haConfig.token,
+      supervisorToken: process.env.SUPERVISOR_TOKEN,
+      mode: process.env.SUPERVISOR_TOKEN ? 'addon' : 'standalone'
+    });
+    logger.info('✓ Home Assistant Service initialized');
+  } else {
+    logger.warn('⚠ Home Assistant not configured - areas won\'t be auto-assigned during pairing');
+  }
 };
 
 // Get entities - fetch from Home Assistant (NO MOCK DATA)
@@ -2645,6 +2679,9 @@ app.get('/api/privacy-policy', readLimiter, (req, res) => {
     console.error(`[WebSocket] Socket error for ${user?.username}:`, error);
   });
 });
+
+// Initialize Home Assistant Service before starting server
+initializeHAService();
 
 // Start server
 mainServer.listen(tlsOptions.port, () => {
