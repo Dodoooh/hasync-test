@@ -806,7 +806,14 @@ app.post('/api/pairing/:sessionId/verify', authLimiter, asyncHandler(async (req:
   }
 
   // Get pairing session from database
-  const session: any = db.prepare('SELECT * FROM pairing_sessions WHERE id = ?').get(sessionId);
+  // If sessionId looks like a PIN (6 digits), search by PIN instead
+  let session: any;
+  if (/^\d{6}$/.test(sessionId)) {
+    logger.info(`[Pairing] Looking up session by PIN: ${sessionId}`);
+    session = db.prepare('SELECT * FROM pairing_sessions WHERE pin = ? AND status = ?').get(sessionId, 'pending');
+  } else {
+    session = db.prepare('SELECT * FROM pairing_sessions WHERE id = ?').get(sessionId);
+  }
 
   if (!session) {
     logger.warn(`[Pairing] Session not found: ${sessionId}`);

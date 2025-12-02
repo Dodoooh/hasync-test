@@ -33,7 +33,7 @@ const websocket_events_1 = require("./services/websocket-events");
 const tokenUtils_1 = require("./utils/tokenUtils");
 const migrate_pairing_1 = require("./database/migrate-pairing");
 const logger = (0, logger_1.createLogger)('Server');
-const VERSION = '1.3.39';
+const VERSION = '1.4.0';
 (0, errorHandler_1.setupUnhandledRejectionHandler)();
 (0, errorHandler_1.setupUncaughtExceptionHandler)();
 const tlsOptions = (0, tls_1.getTLSOptionsFromEnv)();
@@ -603,7 +603,14 @@ app.post('/api/pairing/:sessionId/verify', authLimiter, (0, errorHandler_1.async
     if (!['mobile', 'tablet', 'desktop', 'other'].includes(deviceType)) {
         throw new AppError_1.ValidationError('Invalid device type');
     }
-    const session = db.prepare('SELECT * FROM pairing_sessions WHERE id = ?').get(sessionId);
+    let session;
+    if (/^\d{6}$/.test(sessionId)) {
+        logger.info(`[Pairing] Looking up session by PIN: ${sessionId}`);
+        session = db.prepare('SELECT * FROM pairing_sessions WHERE pin = ? AND status = ?').get(sessionId, 'pending');
+    }
+    else {
+        session = db.prepare('SELECT * FROM pairing_sessions WHERE id = ?').get(sessionId);
+    }
     if (!session) {
         logger.warn(`[Pairing] Session not found: ${sessionId}`);
         throw new AppError_1.NotFoundError('Pairing session');

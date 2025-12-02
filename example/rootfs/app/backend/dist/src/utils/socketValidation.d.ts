@@ -1,9 +1,31 @@
 import { z } from 'zod';
-export declare const subscribeSchema: any;
-export declare const entityUpdateSchema: any;
-export declare const pairingSchema: any;
-export declare const configUpdateSchema: any;
-export declare const messageSchema: any;
+export declare const subscribeSchema: z.ZodObject<{
+    type: z.ZodEnum<{
+        entities: "entities";
+        areas: "areas";
+        dashboards: "dashboards";
+        clients: "clients";
+    }>;
+    id: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>;
+export declare const entityUpdateSchema: z.ZodObject<{
+    entityId: z.ZodString;
+    state: z.ZodString;
+    attributes: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>;
+}, z.core.$strip>;
+export declare const pairingSchema: z.ZodObject<{
+    pin: z.ZodString;
+    clientId: z.ZodString;
+}, z.core.$strip>;
+export declare const configUpdateSchema: z.ZodObject<{
+    key: z.ZodString;
+    value: z.ZodAny;
+}, z.core.$strip>;
+export declare const messageSchema: z.ZodObject<{
+    type: z.ZodString;
+    payload: z.ZodAny;
+    timestamp: z.ZodOptional<z.ZodNumber>;
+}, z.core.$strip>;
 export declare function validateSubscribe(data: unknown): z.infer<typeof subscribeSchema>;
 export declare function validateEntityUpdate(data: unknown): z.infer<typeof entityUpdateSchema>;
 export declare function validatePairing(data: unknown): z.infer<typeof pairingSchema>;
