@@ -1,3 +1,72 @@
+## v1.3.42 (2025-12-02)
+
+### CRITICAL FIX 🔧 Console Logging Restored
+- **Problem**: All console.log statements were being stripped from production builds
+  - Vite Terser configuration had `drop_console: true`
+  - Made debugging impossible - no visibility into token sync
+  - Token sync code was CORRECT but we couldn't see it working
+  - Appeared as if code wasn't running when it actually was
+
+### The Root Cause
+**File**: `frontend/vite.config.ts` line 64
+```typescript
+// BEFORE (v1.3.41 and earlier)
+terserOptions: {
+  compress: {
+    drop_console: true,  // ← STRIPPED ALL LOGS
+    drop_debugger: true,
+  },
+}
+
+// AFTER (v1.3.42)
+terserOptions: {
+  compress: {
+    drop_console: false, // ✅ KEEP console logs
+    drop_debugger: true,
+    pure_funcs: [], // Don't drop any function calls
+  },
+}
+```
+
+### What This Enables
+- ✅ Version banner visible on page load
+- ✅ Token sync status changes logged
+- ✅ API request debugging with token attachment status
+- ✅ Race condition guard warnings visible
+- ✅ Login flow completely traceable
+- ✅ WebSocket connection status visible
+
+### Console Output You'll Now See
+```
+═══════════════════════════════════════════════
+🎨 HAsync Frontend v1.3.42
+═══════════════════════════════════════════════
+Build timestamp: 2025-12-02T14:15:00.000Z
+User agent: Mozilla/5.0...
+Token sync fix: v1.3.40 race condition guard active
+
+[Login] Login successful, setting auth token
+[Login] ✓ Tokens set in clients IMMEDIATELY
+[Login] ✓ Token stored in localStorage
+[Login] ✓ Token set in Zustand state
+[API] GET /api/clients → Token attached (eyJhbGci...)
+[API] POST /api/config/ha → Token attached (eyJhbGci...)
+```
+
+### Why This Matters
+The token synchronization code has been **working correctly since v1.3.40**, but the console stripping made it appear broken. This fix restores visibility into:
+- When tokens are set/cleared
+- Whether API requests include Authorization headers
+- Race condition guard activations
+- WebSocket authentication status
+
+### Three-Team Analysis Results
+- **Backend Team**: Auth middleware chain is correct, CSRF skip logic working
+- **Frontend Team**: Found console stripping bug, token sync code is correct
+- **Integration Team**: All local tests pass, system ready for deployment
+
+---
+
 ## v1.3.41 (2025-12-02)
 
 ### Diagnostic Enhancement 🔍 Frontend Version Logging

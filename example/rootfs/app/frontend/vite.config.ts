@@ -61,8 +61,9 @@ export default defineConfig({
     minify: 'terser',
     terserOptions: {
       compress: {
-        drop_console: true, // Remove console.logs in production
+        drop_console: false, // KEEP console logs for token debugging (v1.3.42)
         drop_debugger: true,
+        pure_funcs: [], // Don't drop any function calls
       },
     },
     // Enable source maps for debugging but smaller

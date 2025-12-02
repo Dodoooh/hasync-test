@@ -1,6 +1,6 @@
 # https://developers.home-assistant.io/docs/add-ons/configuration#add-on-config
 name: HAsync - Home Assistant Manager
-version: "1.3.41"
+version: "1.3.42"
 slug: example
 description: Advanced Home Assistant management interface
 url: "https://github.com/Dodoooh/hasync-test/tree/main/example"
