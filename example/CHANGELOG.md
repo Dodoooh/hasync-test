@@ -1,3 +1,13 @@
+## v1.3.27 (2025-12-02)
+
+### Bug Fixes
+- **Docker**: Install npm dependencies in final container for correct architecture
+  - Removed copying of node_modules from builder stage
+  - Fresh npm install with --build-from-source in target container
+  - Ensures better-sqlite3 and bcrypt compiled for actual runtime architecture
+
+---
+
 ## v1.3.26 (2025-12-02)
 
 ### Bug Fixes
