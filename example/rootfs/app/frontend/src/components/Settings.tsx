@@ -169,8 +169,9 @@ export const Settings: React.FC = () => {
       // Use apiClient to automatically include Authorization header and CSRF token
       await apiClient.saveHAConfig(url, token);
 
-      // Update local state
-      setAuth(url, token);
+      // NOTE: Do NOT call setAuth(url, token) here!
+      // setAuth is for admin JWT token, not HA config.
+      // HA config is already saved to backend database above.
 
       setSaveSuccess(true);
       setConnectionStatus({

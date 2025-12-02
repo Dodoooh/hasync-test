@@ -1,3 +1,55 @@
+## v1.3.44 (2025-12-02)
+
+### CRITICAL FIX 🔥 setAuth() Overwrites Admin JWT Token
+- **Problem**: After saving Home Assistant config, all API requests failed with 401
+  - User had to logout and login again to restore functionality
+  - Settings component called `setAuth(url, token)` with HA credentials
+  - This **overwrote the admin JWT token** with the HA token!
+
+### The Root Cause
+**File**: `Settings.tsx` line 173
+```typescript
+// Save to backend database
+await apiClient.saveHAConfig(url, token);  // ✅ Correct - saves to DB
+
+// Update local state
+setAuth(url, token);  // ❌ BUG! Overwrites admin JWT token with HA token!
+```
+
+**What happened:**
+1. User saves HA config (HA URL + HA Long-Lived Access Token)
+2. Code calls `setAuth(url, token)` with HA credentials
+3. `setAuth` is for **admin authentication** (admin JWT Bearer token)
+4. Admin JWT token gets overwritten with HA token
+5. All subsequent API requests use HA token instead of admin JWT token
+6. Backend rejects requests: "Invalid or expired token" (401)
+7. User forced to logout and login to get new valid admin JWT token
+
+### The Fix
+**Removed the problematic line:**
+```typescript
+// Before (v1.3.43):
+await apiClient.saveHAConfig(url, token);
+setAuth(url, token);  // ❌ Overwrites admin token!
+
+// After (v1.3.44):
+await apiClient.saveHAConfig(url, token);
+// ✅ HA config already saved to backend database
+// ✅ Admin JWT token remains intact
+// ✅ No need to update auth state with HA credentials
+```
+
+### What This Fixes
+- ✅ **Admin JWT token preserved** - No longer overwritten after saving HA config
+- ✅ **No logout required** - API requests continue working after saving HA config
+- ✅ **Seamless UX** - User can save HA config and immediately use the app
+- ✅ **Correct separation** - Admin auth vs HA config are now properly separated
+
+### Files Modified
+- `Settings.tsx` - Removed setAuth(url, token) call (line 173)
+
+---
+
 ## v1.3.43 (2025-12-02)
 
 ### CRITICAL FIX 🔧 Settings Component Authentication Bug

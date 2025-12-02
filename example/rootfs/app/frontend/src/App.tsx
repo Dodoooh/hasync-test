@@ -29,7 +29,7 @@ import { apiClient } from '@/api/client';
 import { ComponentErrorBoundary } from '@/components/ErrorBoundary';
 
 // VERSION - Must match config.yaml
-const FRONTEND_VERSION = '1.3.43';
+const FRONTEND_VERSION = '1.3.44';
 
 // Lazy load components for code splitting
 const LoginForm = lazy(() => import('@/components/LoginForm').then(m => ({ default: m.LoginForm })));
