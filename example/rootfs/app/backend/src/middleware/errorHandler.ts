@@ -60,6 +60,24 @@ export const errorHandler = (
     timestamp: new Date().toISOString()
   };
 
+  // Check if this is a CSRF error from csurf middleware
+  if ((err as any).code === 'EBADCSRFTOKEN' || err.message?.toLowerCase().includes('csrf')) {
+    logger.warn('CSRF token validation failed', errorInfo);
+
+    // Return 403 with proper error code for frontend retry logic
+    res.status(403).json({
+      error: err.message,
+      code: 'EBADCSRFTOKEN',
+      statusCode: 403,
+      timestamp: errorInfo.timestamp,
+      ...(process.env.NODE_ENV === 'development' && {
+        stack: err.stack,
+        path: req.path
+      })
+    });
+    return;
+  }
+
   // Check if this is an operational error
   if (err instanceof AppError && err.isOperational) {
     // Log operational errors as warnings

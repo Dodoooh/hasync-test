@@ -1,3 +1,31 @@
+## v1.3.33 (2025-12-02)
+
+### Bug Fixes ✅ CSRF & FRONTEND FIXES
+- **Backend**: Fixed CSRF error handling returning 500 instead of 403
+  - **ROOT CAUSE**: Error handler didn't specifically handle CSRF errors from csurf middleware
+  - **SOLUTION**: Added CSRF error detection in errorHandler.ts (lines 63-79)
+  - CSRF errors now properly return 403 with code 'EBADCSRFTOKEN'
+  - Frontend interceptor can now automatically retry with fresh CSRF token
+  - **RESULT**: Home Assistant config save now works correctly
+
+- **Frontend**: Fixed auth refresh endpoint URL mismatch
+  - **ROOT CAUSE**: client.ts line 65 called `/auth/refresh` instead of `/api/auth/refresh`
+  - **SOLUTION**: Updated to `/api/auth/refresh` to match backend routing
+  - Also fixed URL check in interceptor (line 62) to include `/api` prefix
+
+### What's Fixed
+- ✅ CSRF token errors properly handled (403 → auto-retry with fresh token)
+- ✅ Home Assistant URL and token configuration save now works
+- ✅ Frontend refresh endpoint URL corrected (`/api/auth/refresh`)
+- ✅ Automatic CSRF token renewal on validation failure
+
+### Technical Details
+- errorHandler.ts: Added CSRF error detection before generic error handling
+- client.ts: Fixed `/auth/refresh` → `/api/auth/refresh` (line 65)
+- client.ts: Fixed URL check to include `/api` prefix (line 62)
+
+---
+
 ## v1.3.32 (2025-12-02)
 
 ### Bug Fixes ✅ AUTH ROUTES FIXED
