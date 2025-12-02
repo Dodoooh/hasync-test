@@ -19,7 +19,8 @@ ARG BUILD_ARCH
 # ==============================================================================
 # STAGE 1: Frontend Build
 # ==============================================================================
-FROM node:18-alpine3.16 AS frontend-builder
+ARG TARGETPLATFORM
+FROM --platform=$TARGETPLATFORM node:18-alpine3.16 AS frontend-builder
 
 WORKDIR /build/frontend
 
@@ -41,7 +42,9 @@ RUN npm run build && \
 # ==============================================================================
 # STAGE 2: Backend Build + Native Modules
 # ==============================================================================
-FROM node:18-alpine3.16 AS backend-builder
+# Use TARGETPLATFORM to build for the correct architecture
+ARG TARGETPLATFORM
+FROM --platform=$TARGETPLATFORM node:18-alpine3.16 AS backend-builder
 
 # Install build dependencies for native modules
 RUN apk add --no-cache \
@@ -59,7 +62,7 @@ RUN npm install --no-audit --no-fund && \
     # Verify native modules compiled successfully
     node -e "require('better-sqlite3')" && \
     node -e "require('bcrypt')" && \
-    echo "✅ Native modules compiled"
+    echo "✅ Native modules compiled for $TARGETPLATFORM"
 
 # Copy backend source
 COPY rootfs/app/backend/src ./src
@@ -144,17 +147,14 @@ RUN mkdir -p /app/frontend/dist \
 # ------------------------------------------------------------------------------
 WORKDIR /app/backend
 
-# Copy package.json
+# Copy package.json and pre-built node_modules from builder
 COPY rootfs/app/backend/package*.json ./
+COPY --from=backend-builder /build/backend/node_modules ./node_modules
 
-# Install dependencies WITH build tools (compile native modules for correct architecture)
-RUN apk add --no-cache python3 make g++ sqlite-dev linux-headers && \
-    npm install --no-audit --no-fund --build-from-source && \
-    node -e "require('better-sqlite3')" && \
+# Verify native modules work
+RUN node -e "require('better-sqlite3')" && \
     node -e "require('bcrypt')" && \
-    echo "✅ Native modules compiled for target architecture" && \
-    apk del python3 make g++ linux-headers && \
-    rm -rf /var/cache/apk/*
+    echo "✅ Native modules verified"
 
 # Copy backend source code
 COPY rootfs/app/backend/src ./src

@@ -1,3 +1,14 @@
+## v1.3.28 (2025-12-02)
+
+### Bug Fixes
+- **Docker**: Fixed architecture mismatch with TARGETPLATFORM
+  - Builder stages now use --platform=$TARGETPLATFORM
+  - Ensures native modules compiled for correct target architecture
+  - Reverted to copying pre-built modules from builder stage
+  - Fixes "Exec format error" by building for correct platform
+
+---
+
 ## v1.3.27 (2025-12-02)
 
 ### Bug Fixes
