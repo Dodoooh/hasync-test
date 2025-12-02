@@ -1,3 +1,32 @@
+## v1.3.35 (2025-12-02)
+
+### Feature Restoration ✅ ADMIN LOGIN RESTORED
+- **Backend**: Restored config-based admin username/password login
+  - **USER REQUEST**: "ich möchte den alten login zurück der in den configs erstellt werden kann"
+  - **SOLUTION**: Restored old login endpoint at `/api/admin/login` (moved from `/api/auth/login`)
+  - Uses `ADMIN_USERNAME` and `ADMIN_PASSWORD` from addon configuration (env vars)
+  - Returns JWT token for authentication (same as before)
+  - **NO CONFLICT**: Moved to different path to avoid conflict with new auth router at `/api/auth`
+
+### What's Working Now
+- ✅ Admin login with username/password from config.yaml options
+- ✅ New auth router still available at `/api/auth/login` (for Home Assistant token auth)
+- ✅ Both authentication methods coexist without conflicts
+- ✅ JWT token generation and validation working correctly
+
+### Technical Details
+- index-simple.ts line 1554: Restored admin login endpoint at `/api/admin/login`
+- index-simple.ts line 87: Updated VERSION constant to 1.3.35
+- config.yaml line 3: Updated version to 1.3.35
+- Frontend should use `/api/admin/login` for username/password authentication
+
+### Migration Notes
+If your frontend currently calls `/api/auth/login`, you have two options:
+1. Keep using `/api/auth/login` with `{ ingressUrl, token }` (Home Assistant auth)
+2. Switch to `/api/admin/login` with `{ username, password }` (config-based auth)
+
+---
+
 ## v1.3.34 (2025-12-02)
 
 ### Critical Bug Fixes ✅ AUTH ROUTING FIXED

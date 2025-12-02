@@ -84,7 +84,7 @@ import { migratePairingTables, startPairingCleanupJob } from './database/migrate
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.34';
+const VERSION = '1.3.35';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -1547,13 +1547,11 @@ app.get('/api/dashboards', readLimiter, authenticate, (_req, res) => {
   ]);
 });
 
-// ===== OLD LOGIN ENDPOINT - DISABLED =====
-// REASON: Conflicts with new auth router at /api/auth (mounted at line 2133)
-// This old endpoint expected { username, password }, but frontend sends { ingressUrl, token }
-// New auth router uses cookie-based auth with httpOnly cookies for better security
-// Kept here for reference only - DO NOT UNCOMMENT
-/*
-app.post('/api/auth/login', authLimiter, (req, res) => {
+// ===== ADMIN LOGIN ENDPOINT - Config-based username/password =====
+// RESTORED: User requested old config-based login (ADMIN_USERNAME/ADMIN_PASSWORD from env vars)
+// Uses different path (/api/admin/login) to avoid conflict with new auth router at /api/auth
+// This endpoint returns JWT token for authentication
+app.post('/api/admin/login', authLimiter, (req, res) => {
   const { username, password } = req.body;
   const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
   const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'test123';
@@ -1588,8 +1586,7 @@ app.post('/api/auth/login', authLimiter, (req, res) => {
       res.status(401).json({ error: 'Invalid credentials. Only admin user is allowed.' });
   }
 });
-*/
-// ===== END OLD LOGIN ENDPOINT =====
+// ===== END ADMIN LOGIN ENDPOINT =====
 
 // Save HA config endpoint
 // SECURITY: CRITICAL - Requires admin authentication - HA token is sensitive!
