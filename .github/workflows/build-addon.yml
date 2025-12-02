@@ -6,14 +6,14 @@ on:
     paths:
       - 'example/**'
       - '.github/workflows/build-addon.yml'
-  workflow_dispatch:  # Allows manual trigger
+  workflow_dispatch:
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write  # Required for GHCR push
+      packages: write
 
     steps:
       - name: Checkout
@@ -30,7 +30,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}  # ✅ Automatic, no extra token needed!
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract version from config.yaml
         id: version
@@ -38,6 +38,11 @@ jobs:
           VERSION=$(grep 'version:' example/config.yaml | awk '{print $2}' | tr -d '"')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "📦 Building version: $VERSION"
+
+      - name: Convert repository owner to lowercase
+        id: repo
+        run: |
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
 
       - name: Build and push amd64 image
         uses: docker/build-push-action@v5
@@ -47,8 +52,8 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/hasync-addon:amd64-${{ steps.version.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/hasync-addon:amd64-latest
+            ghcr.io/${{ steps.repo.outputs.owner }}/hasync-addon:amd64-${{ steps.version.outputs.version }}
+            ghcr.io/${{ steps.repo.outputs.owner }}/hasync-addon:amd64-latest
           build-args: |
             BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.15
             TEMPIO_VERSION=2021.09.0
@@ -61,13 +66,9 @@ jobs:
           echo "✅ Image pushed successfully!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "📦 **Images created:**" >> $GITHUB_STEP_SUMMARY
-          echo "- \`ghcr.io/${{ github.repository_owner }}/hasync-addon:amd64-${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`ghcr.io/${{ github.repository_owner }}/hasync-addon:amd64-latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/${{ steps.repo.outputs.owner }}/hasync-addon:amd64-${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ghcr.io/${{ steps.repo.outputs.owner }}/hasync-addon:amd64-latest\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "🏠 **For Home Assistant:**" >> $GITHUB_STEP_SUMMARY
-          echo "1. Create \`example/build.yaml\`:" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`yaml" >> $GITHUB_STEP_SUMMARY
-          echo "image: ghcr.io/${{ github.repository_owner }}/hasync-addon:amd64-${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "2. Reload addon: \`ha addons reload local_example\`" >> $GITHUB_STEP_SUMMARY
-          echo "3. Start addon: \`ha addons start local_example\`" >> $GITHUB_STEP_SUMMARY
+          echo "1. Reload addon: \`ha addons reload local_example\`" >> $GITHUB_STEP_SUMMARY
+          echo "2. Start addon: \`ha addons start local_example\`" >> $GITHUB_STEP_SUMMARY
