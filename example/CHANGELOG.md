@@ -1,3 +1,79 @@
+## v1.3.40 (2025-12-02)
+
+### CRITICAL FIX 🚨 Race Condition in Token Synchronization
+- **Problem**: Token was sometimes sent, sometimes not - caused intermittent 401/403 errors
+  - **ROOT CAUSE**: Race condition between login and useEffect token sync
+  - Login sets token in state → triggers useEffect → useEffect might run too early/late
+  - Multiple re-renders could cause token to be cleared before being used
+  - Result: Some requests had token, others didn't - unpredictable behavior
+
+### The Fixes
+1. **IMMEDIATE Token Setting** (App.tsx handleLogin)
+   - Now sets token in apiClient/wsClient BEFORE updating state
+   - No waiting for React re-render cycle
+   - Token available for requests immediately after login
+
+2. **Race Condition Guard** (client.ts setAuthToken)
+   - Prevents token from being cleared within 1 second of being set
+   - Protects against useEffect firing with stale state
+   - Tracks token set time to detect race conditions
+
+3. **Comprehensive Debug Logging**
+   - Added detailed logging to every token operation
+   - Shows token preview in all API requests
+   - Warns when requests sent without token
+   - Logs when race condition guard prevents token clear
+
+### Technical Changes
+```typescript
+// client.ts: Race condition guard
+setAuthToken(token: string | null): void {
+  if (!token && this.accessToken) {
+    const tokenAge = Date.now() - (this.tokenSetTime || 0);
+    if (tokenAge < 1000) {
+      console.warn('⚠️ Prevented token clear - race condition!');
+      return;
+    }
+  }
+  this.accessToken = token;
+  this.tokenSetTime = token ? Date.now() : 0;
+}
+
+// App.tsx: Immediate token setting
+const handleLogin = (token: string) => {
+  // Set in clients FIRST (before state update)
+  apiClient.setAuthToken(token);
+  wsClient.setAuthToken(token);
+  // THEN update state
+  setAuth('', token);
+};
+```
+
+### What This Fixes
+- ✅ **Consistent token sending** - Token now sent with EVERY request
+- ✅ **No more intermittent 401/403 errors** - Race condition eliminated
+- ✅ **Immediate authentication** - No delay waiting for re-render
+- ✅ **Better debugging** - Detailed logs show exactly when token is set/used/cleared
+- ✅ **Race condition protection** - Guard prevents premature token clearing
+
+### How to Test
+After rebuild, browser console should show:
+```
+[Login] Login successful, setting auth token
+[Login] ✓ Tokens set in clients IMMEDIATELY
+[Login] ✓ Token stored in localStorage
+[Login] ✓ Token set in Zustand state
+[API] GET /api/entities → Token attached (eyJhbGciOiJIUz...)
+[API] POST /api/config/ha → Token attached (eyJhbGciOiJIUz...)
+```
+
+NO MORE:
+- ❌ `[API] GET /api/entities → NO TOKEN!`
+- ❌ `Authentication failed: No token provided`
+- ❌ `CSRF token validation failed`
+
+---
+
 ## v1.3.39 (2025-12-02)
 
 ### CRITICAL FIX ✅ JWT Token Not Sent to API

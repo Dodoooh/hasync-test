@@ -64,14 +64,23 @@ const App: React.FC = () => {
   // CRITICAL FIX: Sync accessToken from Zustand store to apiClient
   // This ensures API requests include Authorization header after page refresh
   useEffect(() => {
+    console.log('[App] Token sync effect triggered', {
+      isAuthenticated,
+      hasToken: !!accessToken,
+      tokenPreview: accessToken ? accessToken.substring(0, 30) + '...' : 'none'
+    });
+
     if (isAuthenticated && accessToken) {
       console.log('✓ Restoring API client token from store');
       apiClient.setAuthToken(accessToken);
       wsClient.setAuthToken(accessToken);
-    } else {
-      console.log('✗ No token to restore (not authenticated)');
+    } else if (!isAuthenticated) {
+      // Only clear token if explicitly logged out, not on initial render
+      console.log('✗ Not authenticated - clearing tokens');
       apiClient.setAuthToken(null);
       wsClient.setAuthToken(null);
+    } else {
+      console.log('⚠️ Authenticated but no token yet - waiting...');
     }
   }, [isAuthenticated, accessToken]);
 
@@ -155,21 +164,25 @@ const App: React.FC = () => {
   }, [isMobile]);
 
   const handleLogin = useCallback((token: string) => {
-    console.log('Login successful, setting auth token');
+    console.log('[Login] Login successful, setting auth token', {
+      tokenPreview: token.substring(0, 30) + '...',
+      tokenLength: token.length
+    });
+
+    // IMMEDIATELY set token in API client FIRST (before state update)
+    apiClient.setAuthToken(token);
+    wsClient.setAuthToken(token);
+    console.log('[Login] ✓ Tokens set in clients IMMEDIATELY');
 
     // Store token in localStorage as fallback for WebSocket
     if (token) {
       localStorage.setItem('auth_token', token);
+      console.log('[Login] ✓ Token stored in localStorage');
     }
 
-    // Set in app state
+    // Set in app state (this will trigger useEffect, but token is already set)
     setAuth('', token);
-
-    // Set API client authentication token for all HTTP requests
-    apiClient.setAuthToken(token);
-
-    // Set WebSocket authentication token immediately
-    wsClient.setAuthToken(token);
+    console.log('[Login] ✓ Token set in Zustand state');
   }, [setAuth]);
 
   const renderContent = useCallback(() => {

@@ -6,6 +6,7 @@ class ApiClient {
   private baseURL: string;
   private csrfToken: string | null = null;
   private accessToken: string | null = null;
+  private tokenSetTime: number = 0; // Track when token was set to prevent race conditions
 
   constructor() {
     this.baseURL = '/api';
@@ -24,6 +25,9 @@ class ApiClient {
         // Add JWT Bearer token if available
         if (this.accessToken) {
           config.headers['Authorization'] = `Bearer ${this.accessToken}`;
+          console.log(`[API] ${config.method?.toUpperCase()} ${config.url} → Token attached (${this.accessToken.substring(0, 30)}...)`);
+        } else {
+          console.warn(`[API] ${config.method?.toUpperCase()} ${config.url} → NO TOKEN!`);
         }
 
         // Add CSRF token for state-changing requests (POST, PUT, PATCH, DELETE)
@@ -108,8 +112,18 @@ class ApiClient {
    * Called after successful login to authenticate all subsequent requests
    */
   setAuthToken(token: string | null): void {
+    // GUARD: Don't clear token if we just set it (prevent race conditions)
+    if (!token && this.accessToken) {
+      const tokenAge = Date.now() - (this.tokenSetTime || 0);
+      if (tokenAge < 1000) {
+        console.warn('⚠️ Prevented token clear within 1s of setting - possible race condition');
+        return;
+      }
+    }
+
     this.accessToken = token;
-    console.log('✓ API client token updated:', token ? 'Token set' : 'Token cleared');
+    this.tokenSetTime = token ? Date.now() : 0;
+    console.log('✓ API client token updated:', token ? `Token set (${token.substring(0, 30)}...)` : 'Token cleared');
   }
 
   /**
