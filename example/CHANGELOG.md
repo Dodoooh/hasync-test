@@ -1,3 +1,47 @@
+## v1.4.6 (2025-12-02) - Connect WebSocket on Startup 🔌
+
+### BUG FIX 🔧
+
+#### Fix Pairing Timeout - Connect Home Assistant WebSocket on Startup
+**FIXED**: WebSocket connection to Home Assistant is now established during server startup.
+
+**Problem:**
+- `haService.getAreas()` timed out during pairing
+- WebSocket connection was never established (`connect()` was never called)
+- Pairing requests timed out waiting for areas
+
+**Solution:**
+```typescript
+const initializeHAService = async () => {
+  const haConfig = getHAConfig();
+  if (haConfig.url && haConfig.token) {
+    haService = new HomeAssistantService({...});
+
+    // Connect WebSocket to Home Assistant
+    await haService.connect();
+    logger.info('✓ Home Assistant Service initialized and connected');
+  }
+};
+
+// Wait for HA connection before starting server
+(async () => {
+  await initializeHAService();
+  mainServer.listen(port, () => {...});
+})();
+```
+
+**Benefits:**
+- ✅ WebSocket connected and ready before first request
+- ✅ No timeout during pairing
+- ✅ Areas fetched instantly
+- ✅ Better error handling with try/catch
+
+**Backend Changes:**
+- Made `initializeHAService()` async and added `await haService.connect()` in `index-simple.ts:1145-1166`
+- Wrapped server startup in async IIFE to wait for HA connection in `index-simple.ts:2692-2757`
+
+---
+
 ## v1.4.5 (2025-12-02) - Use WebSocket API for Area Registry 🔧
 
 ### BUG FIX 🔧

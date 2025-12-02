@@ -1142,7 +1142,7 @@ const getHAConfig = (): { url?: string; token?: string } => {
 
 // Initialize Home Assistant Service
 let haService: HomeAssistantService | null = null;
-const initializeHAService = () => {
+const initializeHAService = async () => {
   const haConfig = getHAConfig();
   if (haConfig.url && haConfig.token) {
     haService = new HomeAssistantService({
@@ -1151,7 +1151,15 @@ const initializeHAService = () => {
       supervisorToken: process.env.SUPERVISOR_TOKEN,
       mode: process.env.SUPERVISOR_TOKEN ? 'addon' : 'standalone'
     });
-    logger.info('✓ Home Assistant Service initialized');
+
+    // Connect WebSocket to Home Assistant
+    try {
+      await haService.connect();
+      logger.info('✓ Home Assistant Service initialized and connected');
+    } catch (error: any) {
+      logger.error(`Failed to connect to Home Assistant WebSocket: ${error.message}`);
+      logger.warn('⚠ Areas won\'t be auto-assigned during pairing until WebSocket connects');
+    }
   } else {
     logger.warn('⚠ Home Assistant not configured - areas won\'t be auto-assigned during pairing');
   }
@@ -2681,10 +2689,11 @@ app.get('/api/privacy-policy', readLimiter, (req, res) => {
 });
 
 // Initialize Home Assistant Service before starting server
-initializeHAService();
+(async () => {
+  await initializeHAService();
 
-// Start server
-mainServer.listen(tlsOptions.port, () => {
+  // Start server
+  mainServer.listen(tlsOptions.port, () => {
   console.log('');
   console.log('═══════════════════════════════════════════════');
   console.log(`  HAsync Backend Server v${VERSION}`);
@@ -2745,3 +2754,4 @@ process.on('SIGTERM', () => {
     }
   });
 });
+})(); // Close async IIFE for HA Service initialization
