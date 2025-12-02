@@ -1,3 +1,28 @@
+## v1.3.31 (2025-12-02)
+
+### Bug Fixes ✅ ROOT CAUSE FIXED
+- **Docker**: Fixed node_modules contamination issue
+  - **ROOT CAUSE**: Missing .dockerignore allowed host node_modules to contaminate build
+  - **SOLUTION**: Added comprehensive .dockerignore to prevent host artifacts
+  - Dockerfile already fixed (no recursive rootfs/ copy)
+  - CRITICAL: Home Assistant must FORCE REBUILD to clear cached layers
+  - **VERIFIED**: Clean build produces correct architecture binaries
+
+### Critical Fix
+- Added .dockerignore to prevent macOS ARM64 binaries from entering Linux container
+- Ensures node_modules are ONLY from builder stage (correct architecture)
+
+### Home Assistant Instructions
+```bash
+# MUST force rebuild - cached layers contain wrong binaries!
+ha addons uninstall local_example
+docker system prune -a -f
+ha addons install local_example
+ha addons start local_example
+```
+
+---
+
 ## v1.3.30 (2025-12-02)
 
 ### Bug Fixes ✅ FINAL SOLUTION

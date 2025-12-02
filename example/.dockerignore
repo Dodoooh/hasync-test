@@ -1,0 +1,34 @@
+# Prevent host node_modules from contaminating Docker build
+**/node_modules
+**/node_modules/
+node_modules
+
+# Build artifacts
+**/dist
+**/build
+**/.next
+
+# Development files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Test coverage
+coverage
+.nyc_output
