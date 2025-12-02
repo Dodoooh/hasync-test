@@ -176,22 +176,12 @@ export class HomeAssistantService {
     });
   }
 
-  // REST API methods (for add-on mode)
+  // Registry API methods (WebSocket only)
   async getAreas(): Promise<HAArea[]> {
-    const response = await fetch(`${this.config.url}/api/config/area_registry/list`, {
-      headers: this.getAuthHeaders()
+    // Area registry is only available via WebSocket API, not REST
+    return this.sendRequest<HAArea[]>({
+      type: 'config/area_registry/list'
     });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch areas: ${response.status} ${response.statusText}`);
-    }
-
-    const text = await response.text();
-    try {
-      return JSON.parse(text);
-    } catch (error) {
-      throw new Error(`Failed to parse areas response: ${error instanceof Error ? error.message : 'Unknown error'}. Response: ${text.substring(0, 100)}`);
-    }
   }
 
   async getDashboards(): Promise<HADashboard[]> {

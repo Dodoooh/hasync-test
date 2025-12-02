@@ -32,6 +32,7 @@ const requestLogger_1 = require("./middleware/requestLogger");
 const websocket_events_1 = require("./services/websocket-events");
 const tokenUtils_1 = require("./utils/tokenUtils");
 const migrate_pairing_1 = require("./database/migrate-pairing");
+const homeassistant_1 = require("./services/homeassistant");
 const logger = (0, logger_1.createLogger)('Server');
 const VERSION = '1.4.0';
 (0, errorHandler_1.setupUnhandledRejectionHandler)();
@@ -628,25 +629,72 @@ app.post('/api/pairing/:sessionId/verify', authLimiter, (0, errorHandler_1.async
         logger.warn(`[Pairing] Invalid PIN for session: ${sessionId}`);
         throw new AppError_1.ValidationError('Invalid PIN');
     }
+    const clientId = `client_${Date.now()}`;
+    let assignedAreas = [];
+    try {
+        if (haService) {
+            const areas = await haService.getAreas();
+            assignedAreas = areas.map((area) => area.area_id || area.id);
+            logger.info(`[Pairing] Fetched ${assignedAreas.length} areas from Home Assistant`);
+        }
+        else {
+            logger.warn('[Pairing] Home Assistant Service not initialized - no areas assigned');
+        }
+    }
+    catch (error) {
+        logger.error(`[Pairing] Failed to fetch areas from Home Assistant: ${error.message}`);
+    }
+    const clientToken = (0, tokenUtils_1.generateClientToken)(clientId, assignedAreas);
+    const tokenHash = (0, tokenUtils_1.hashToken)(clientToken);
+    const timestamp = Math.floor(Date.now() / 1000);
+    db.prepare(`
+    INSERT INTO clients (
+      id,
+      name,
+      device_type,
+      public_key,
+      certificate,
+      paired_at,
+      last_seen,
+      is_active,
+      assigned_areas,
+      metadata,
+      token_hash
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(clientId, database_security_1.InputSanitizer.sanitizeString(deviceName, 100), deviceType, tokenHash, tokenHash, timestamp, timestamp, 1, JSON.stringify(assignedAreas), JSON.stringify({
+        deviceName: deviceName,
+        sessionId: session.id,
+        pairingMethod: 'pin',
+        pairedAt: new Date().toISOString()
+    }), tokenHash);
     db.prepare(`
     UPDATE pairing_sessions
-    SET status = 'verified',
+    SET status = 'completed',
         device_name = ?,
-        device_type = ?
+        device_type = ?,
+        client_id = ?,
+        client_token_hash = ?
     WHERE id = ?
-  `).run(database_security_1.InputSanitizer.sanitizeString(deviceName, 100), deviceType, sessionId);
-    logger.info(`[Pairing] Session verified: ${sessionId} - Device: ${deviceName} (${deviceType})`);
-    io.emit('pairing_verified', {
-        sessionId,
+  `).run(database_security_1.InputSanitizer.sanitizeString(deviceName, 100), deviceType, clientId, tokenHash, session.id);
+    logger.info(`[Pairing] Session completed immediately: ${session.id} → Client: ${clientId} (${deviceName})`);
+    db.prepare(`
+    INSERT INTO activity_log (client_id, action, details, ip_address)
+    VALUES (?, ?, ?, ?)
+  `).run(clientId, 'pairing_completed', JSON.stringify({ sessionId: session.id, clientName: deviceName, deviceName: deviceName }), req.ip || req.connection?.remoteAddress);
+    io.emit('pairing_completed', {
+        sessionId: session.id,
+        clientId,
         deviceName,
         deviceType,
         timestamp: new Date().toISOString()
     });
     res.json({
         success: true,
-        message: 'PIN verified. Waiting for admin approval.',
-        sessionId,
-        status: 'verified'
+        message: 'PIN verified and paired successfully.',
+        sessionId: session.id,
+        status: 'completed',
+        clientId: clientId,
+        clientToken: clientToken
     });
 }));
 app.post('/api/pairing/:sessionId/complete', authLimiter, authenticate, (0, errorHandler_1.asyncHandler)(async (req, res) => {
@@ -784,6 +832,22 @@ const getHAConfig = () => {
         console.warn('⚠ No HA config found in database or environment');
     }
     return fallback;
+};
+let haService = null;
+const initializeHAService = () => {
+    const haConfig = getHAConfig();
+    if (haConfig.url && haConfig.token) {
+        haService = new homeassistant_1.HomeAssistantService({
+            url: haConfig.url,
+            token: haConfig.token,
+            supervisorToken: process.env.SUPERVISOR_TOKEN,
+            mode: process.env.SUPERVISOR_TOKEN ? 'addon' : 'standalone'
+        });
+        logger.info('✓ Home Assistant Service initialized');
+    }
+    else {
+        logger.warn('⚠ Home Assistant not configured - areas won\'t be auto-assigned during pairing');
+    }
 };
 app.get('/api/entities', readLimiter, authenticate, (0, errorHandler_1.asyncHandler)(async (_req, res) => {
     const haConfig = getHAConfig();
@@ -1982,6 +2046,7 @@ io.on('connection', (socket) => {
         console.error(`[WebSocket] Socket error for ${user?.username}:`, error);
     });
 });
+initializeHAService();
 mainServer.listen(tlsOptions.port, () => {
     console.log('');
     console.log('═══════════════════════════════════════════════');

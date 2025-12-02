@@ -1,3 +1,40 @@
+## v1.4.5 (2025-12-02) - Use WebSocket API for Area Registry 🔧
+
+### BUG FIX 🔧
+
+#### Fix 404 Error - Use WebSocket API Instead of REST
+**FIXED**: Area registry is only available via WebSocket API in Home Assistant, not REST.
+
+**Problem:**
+- Backend used REST endpoint `/api/config/area_registry/list` which doesn't exist (404 Not Found)
+- Areas were not fetched during pairing
+- Clients received 0 areas
+
+**Solution:**
+```typescript
+// Use WebSocket API instead of REST
+async getAreas(): Promise<HAArea[]> {
+  return this.sendRequest<HAArea[]>({
+    type: 'config/area_registry/list'
+  });
+}
+```
+
+**Benefits:**
+- ✅ Works with all Home Assistant versions
+- ✅ More efficient (already connected via WebSocket)
+- ✅ No additional HTTP requests needed
+
+**Backend Changes:**
+- Changed `getAreas()` from REST to WebSocket API in `homeassistant.ts:180-185`
+- Simplified code (removed HTTP error handling, JSON parsing)
+
+**Sources:**
+- [Home Assistant REST API Documentation](https://developers.home-assistant.io/docs/api/rest/)
+- [WebSocket API for Registry Access](https://community.home-assistant.io/t/how-to-get-list-of-areas-through-websocket-api-or-hass-object/426485)
+
+---
+
 ## v1.4.4 (2025-12-02) - Fix Area Fetching Error Handling 🐛
 
 ### BUG FIX 🔧
