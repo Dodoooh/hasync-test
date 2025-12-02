@@ -839,20 +839,75 @@ app.post('/api/pairing/:sessionId/verify', authLimiter, asyncHandler(async (req:
     throw new ValidationError('Invalid PIN');
   }
 
-  // Update session with device info and status
+  // Generate CLIENT JWT token immediately (no admin approval needed)
+  // PIN is secure enough: single-use, 5-minute expiry, admin-created
+  const clientId = `client_${Date.now()}`;
+  const clientToken = generateClientToken(clientId, []); // Empty areas by default
+  const tokenHash = hashToken(clientToken);
+
+  // Create client in database
+  const timestamp = Math.floor(Date.now() / 1000);
+  db.prepare(`
+    INSERT INTO clients (
+      id,
+      name,
+      device_type,
+      public_key,
+      certificate,
+      paired_at,
+      last_seen,
+      is_active,
+      assigned_areas,
+      metadata,
+      token_hash
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    clientId,
+    InputSanitizer.sanitizeString(deviceName, 100),
+    deviceType,
+    tokenHash, // Using public_key field to store token hash
+    tokenHash, // Using certificate field as duplicate for backward compatibility
+    timestamp,
+    timestamp,
+    1, // is_active
+    JSON.stringify([]), // Empty assigned areas by default
+    JSON.stringify({
+      deviceName: deviceName,
+      sessionId: session.id,
+      pairingMethod: 'pin',
+      pairedAt: new Date().toISOString()
+    }),
+    tokenHash // token_hash for authentication lookup
+  );
+
+  // Update session with device info and mark as completed
   db.prepare(`
     UPDATE pairing_sessions
-    SET status = 'verified',
+    SET status = 'completed',
         device_name = ?,
-        device_type = ?
+        device_type = ?,
+        client_id = ?,
+        client_token_hash = ?
     WHERE id = ?
-  `).run(InputSanitizer.sanitizeString(deviceName, 100), deviceType, sessionId);
+  `).run(InputSanitizer.sanitizeString(deviceName, 100), deviceType, clientId, tokenHash, session.id);
 
-  logger.info(`[Pairing] Session verified: ${sessionId} - Device: ${deviceName} (${deviceType})`);
+  logger.info(`[Pairing] Session completed immediately: ${session.id} → Client: ${clientId} (${deviceName})`);
 
-  // Emit WebSocket event to notify admin that device is waiting for approval
-  io.emit('pairing_verified', {
-    sessionId,
+  // Log activity
+  db.prepare(`
+    INSERT INTO activity_log (client_id, action, details, ip_address)
+    VALUES (?, ?, ?, ?)
+  `).run(
+    clientId,
+    'pairing_completed',
+    JSON.stringify({ sessionId: session.id, clientName: deviceName, deviceName: deviceName }),
+    req.ip || req.connection?.remoteAddress
+  );
+
+  // Emit WebSocket event with completed status
+  io.emit('pairing_completed', {
+    sessionId: session.id,
+    clientId,
     deviceName,
     deviceType,
     timestamp: new Date().toISOString()
@@ -860,9 +915,11 @@ app.post('/api/pairing/:sessionId/verify', authLimiter, asyncHandler(async (req:
 
   res.json({
     success: true,
-    message: 'PIN verified. Waiting for admin approval.',
-    sessionId,
-    status: 'verified'
+    message: 'PIN verified and paired successfully.',
+    sessionId: session.id,
+    status: 'completed',
+    clientId: clientId,
+    clientToken: clientToken // Return token immediately
   });
 }));
 

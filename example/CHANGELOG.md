@@ -1,3 +1,89 @@
+## v1.4.2 (2025-12-02) - Instant PIN Pairing 🚀
+
+### BREAKING CHANGES 🔥
+
+#### Immediate Token Return on PIN Verification
+**REVOLUTIONARY CHANGE**: Admin approval step completely removed! PIN verification now returns authentication token immediately.
+
+**Why This Change?**
+The PIN is already secure enough:
+- ✅ Single-use only (cannot be reused)
+- ✅ 5-minute expiration
+- ✅ Admin must create it first
+- ✅ Eliminates unnecessary approval workflow
+
+**Old Flow (v1.4.1):**
+1. Client enters PIN
+2. Backend marks session as "verified"
+3. Client polls for admin approval
+4. Admin manually approves in web UI
+5. Backend generates token
+6. Client receives token and completes pairing
+
+**New Flow (v1.4.2):**
+1. Client enters PIN
+2. Backend generates token immediately ✨
+3. Client receives token and completes pairing 🎉
+
+**API Changes:**
+```typescript
+// POST /api/pairing/:sessionId/verify response now includes:
+{
+  success: true,
+  message: "PIN verified and paired successfully.",
+  sessionId: "pairing_...",
+  status: "completed",  // Changed from "verified"
+  clientId: "client_...",
+  clientToken: "eyJ..."  // NEW: Token returned immediately
+}
+```
+
+**Backend Implementation:**
+```typescript
+// Generate CLIENT JWT token immediately (no admin approval needed)
+const clientId = `client_${Date.now()}`;
+const clientToken = generateClientToken(clientId, []);
+const tokenHash = hashToken(clientToken);
+
+// Create client in database immediately
+db.prepare(`INSERT INTO clients (...) VALUES (...)`).run(...);
+
+// Update session status to 'completed' (not 'verified')
+db.prepare(`UPDATE pairing_sessions SET status = 'completed', ...`).run(...);
+
+// Return token in response
+res.json({
+  success: true,
+  clientToken: clientToken  // Immediate token return!
+});
+```
+
+**tvOS App Changes:**
+- Removed `pollForCompletion()` function entirely
+- Removed "Waiting for admin approval" UI state
+- Removed `isWaitingForApproval` state variable
+- Simplified `verifyPin()` to save token immediately
+- Success animation shows immediately after PIN verification
+
+**Files Modified:**
+- `backend/src/index-simple.ts` - Merged token generation into verify endpoint
+- `PairingSession.swift` - Added `clientToken` and `clientId` to verify response
+- `PairingView.swift` - Removed polling logic and approval UI
+
+**Benefits:**
+- ⚡ **Instant Pairing**: No waiting, no polling, no admin UI needed
+- 🎯 **Simplified UX**: Enter PIN → Get token → Done!
+- 📉 **Fewer API Calls**: No polling, no completion endpoint
+- 🧹 **Cleaner Code**: Removed 80+ lines of polling logic
+- 🔒 **Still Secure**: PIN security properties unchanged
+
+**Migration Notes:**
+- Existing clients using polling will need to update to handle immediate token return
+- The `/api/pairing/:sessionId/complete` endpoint is now deprecated (but still functional for backward compatibility)
+- Web UI admin approval interface is no longer needed for pairing workflow
+
+---
+
 ## v1.4.1 (2025-12-02) - tvOS Pairing Enhancement 📱
 
 ### NEW FEATURES ✨
