@@ -37,7 +37,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/auth/login', {
+      // ADMIN LOGIN: Uses username/password from addon config (ADMIN_USERNAME/ADMIN_PASSWORD)
+      // Changed from /api/auth/login to /api/admin/login in v1.3.35
+      const response = await fetch('/api/admin/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

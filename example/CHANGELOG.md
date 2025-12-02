@@ -1,3 +1,32 @@
+## v1.3.36 (2025-12-02)
+
+### Frontend Fix ✅ LOGIN FORM UPDATED
+- **Frontend**: Updated LoginForm to use new admin login endpoint
+  - **CHANGE**: LoginForm.tsx line 42: `/api/auth/login` → `/api/admin/login`
+  - Now correctly calls the admin login endpoint with username/password
+  - Sends `{ username, password }` to `/api/admin/login`
+  - Receives JWT token for authentication
+  - Both login methods now working correctly!
+
+### What's Working Now
+- ✅ Admin login form uses correct endpoint `/api/admin/login`
+- ✅ Backend admin endpoint at `/api/admin/login` accepts username/password
+- ✅ Home Assistant auth form still uses `/api/auth/login` with token
+- ✅ No endpoint conflicts
+- ✅ Complete authentication flow working
+
+### Technical Details
+- LoginForm.tsx line 42: Updated endpoint URL
+- config.yaml line 3: Updated version to 1.3.36
+- index-simple.ts line 87: Updated VERSION constant
+
+### Ready to Use!
+After rebuilding the addon, login with:
+- **Username**: Value from `admin_username` in config.yaml (default: "admin")
+- **Password**: Value from `admin_password` in config.yaml
+
+---
+
 ## v1.3.35 (2025-12-02)
 
 ### Feature Restoration ✅ ADMIN LOGIN RESTORED
