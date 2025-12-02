@@ -100,10 +100,11 @@ export const PairingWizard: React.FC = () => {
     if (!pairingSession) return;
 
     try {
-      const client = await apiClient.completePairing(pairingSession.id, {
+      const client = await apiClient.completePairing(
+        pairingSession.id,
         clientName,
-        assignedAreas: selectedAreas,
-      });
+        selectedAreas
+      );
 
       setPairedClient(client);
       setActiveStep(3);
