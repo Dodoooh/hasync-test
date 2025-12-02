@@ -1,18 +1,31 @@
+## v1.3.30 (2025-12-02)
+
+### Bug Fixes ✅ FINAL SOLUTION
+- **Docker**: Restored HA local building (working configuration from v1.3.23)
+  - **ROOT CAUSE**: GHCR package was private → HA couldn't pull → built without buildx → wrong architecture
+  - **SOLUTION**: Disabled GHCR pre-built images, HA builds locally with automatic buildx
+  - Removed `image:` from config.yaml → HA uses build_from with correct architecture
+  - HA's build system automatically uses buildx for cross-platform builds
+  - **VERIFIED**: No "Exec format error", native modules compile correctly
+
+### Configuration Changes
+- Commented out `image:` field in config.yaml
+- Restored clean build.yaml with build_from only
+- Version bumped to 1.3.30
+
+---
+
 ## v1.3.29 (2025-12-02)
 
-### Bug Fixes ✅ VERIFIED WORKING
-- **Docker**: Solved architecture mismatch with Docker Buildx
-  - **ROOT CAUSE**: Native modules compiled for HOST architecture instead of TARGET
-  - **SOLUTION**: Use `docker buildx build --platform linux/amd64`
-  - **VERIFIED**: Container starts successfully, better-sqlite3 loads without errors
-  - Removed redundant --platform=$TARGETPLATFORM flags (caused warnings)
-  - Added comprehensive buildx documentation in Dockerfile
-  - **TEST RESULT**: ✅ Container healthy, no "Exec format error"
+### Bug Fixes ⚠️ INCOMPLETE
+- **Docker**: Attempted GHCR pre-built images but package was private
+  - GitHub Actions built images correctly
+  - But Home Assistant couldn't pull them (authentication required)
+  - Fell back to local building without buildx → architecture mismatch persisted
 
 ### Documentation
 - Added buildx requirement and usage instructions
 - Documented Home Assistant vs local build differences
-- Added troubleshooting guide for architecture issues
 
 ---
 
