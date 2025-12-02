@@ -84,7 +84,7 @@ import { migratePairingTables, startPairingCleanupJob } from './database/migrate
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.40';
+const VERSION = '1.3.41';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();

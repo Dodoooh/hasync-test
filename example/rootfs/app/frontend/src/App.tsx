@@ -28,6 +28,9 @@ import { wsClient } from '@/api/websocket';
 import { apiClient } from '@/api/client';
 import { ComponentErrorBoundary } from '@/components/ErrorBoundary';
 
+// VERSION - Must match config.yaml
+const FRONTEND_VERSION = '1.3.41';
+
 // Lazy load components for code splitting
 const LoginForm = lazy(() => import('@/components/LoginForm').then(m => ({ default: m.LoginForm })));
 const EntitySelector = lazy(() => import('@/components/EntitySelector').then(m => ({ default: m.EntitySelector })));
@@ -60,6 +63,16 @@ const App: React.FC = () => {
 
   const [currentTab, setCurrentTab] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Log frontend version on mount
+  useEffect(() => {
+    console.log('═══════════════════════════════════════════════');
+    console.log(`🎨 HAsync Frontend v${FRONTEND_VERSION}`);
+    console.log('═══════════════════════════════════════════════');
+    console.log('Build timestamp:', new Date().toISOString());
+    console.log('User agent:', navigator.userAgent);
+    console.log('Token sync fix:', 'v1.3.40 race condition guard active');
+  }, []);
 
   // CRITICAL FIX: Sync accessToken from Zustand store to apiClient
   // This ensures API requests include Authorization header after page refresh

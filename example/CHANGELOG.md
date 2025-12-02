@@ -1,3 +1,38 @@
+## v1.3.41 (2025-12-02)
+
+### Diagnostic Enhancement 🔍 Frontend Version Logging
+- **Problem**: Unable to determine if frontend was actually rebuilt with new code
+  - Backend showed v1.3.40 but frontend debug logs were missing
+  - Browser was caching old JavaScript bundles
+  - No way to verify which frontend version was running
+
+### The Fix
+- **Added frontend version logging** (App.tsx)
+  - Logs version banner on app mount
+  - Shows build timestamp and user agent
+  - Confirms which token sync fix is active
+  - Makes browser cache issues immediately visible
+
+### What You'll See Now
+```
+═══════════════════════════════════════════════
+🎨 HAsync Frontend v1.3.41
+═══════════════════════════════════════════════
+Build timestamp: 2025-12-02T14:15:00.000Z
+User agent: Mozilla/5.0...
+Token sync fix: v1.3.40 race condition guard active
+```
+
+### Browser Cache Clearing Required
+If you don't see the version banner after rebuild:
+1. **Chrome/Edge**: Ctrl+Shift+Delete → Clear cache and cookies
+2. **Firefox**: Ctrl+Shift+Delete → Clear everything
+3. **Safari**: Cmd+Option+E → Empty caches
+4. **OR**: Open in Incognito/Private window
+5. **Force reload**: Ctrl+Shift+R (Cmd+Shift+R on Mac)
+
+---
+
 ## v1.3.40 (2025-12-02)
 
 ### CRITICAL FIX 🚨 Race Condition in Token Synchronization
