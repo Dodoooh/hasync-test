@@ -1,3 +1,70 @@
+## v1.4.7 (2025-12-02) - Manual HA Token Distribution 🔐
+
+### MAJOR FEATURE 🚀
+
+#### Per-Client Home Assistant Token Distribution
+**NEW**: Complete redesign of authentication architecture - each client now receives their own HA token from admin.
+
+**Previous Behavior:**
+- Backend stored single HA token for all clients
+- Areas auto-assigned during pairing by fetching from HA
+- 403 Forbidden errors if backend HA token invalid
+
+**New Behavior:**
+- Each tvOS client gets their own HA long-lived access token
+- Admin manually distributes tokens via web UI
+- Backend HA connection now optional (only for backward compatibility)
+- No more 403 errors blocking pairing
+
+**Backend Changes:**
+- Added `ha_token` and `ha_token_set_at` columns to clients table (migration 006)
+- Created `PUT /api/clients/:id/ha-token` endpoint in `index-simple.ts:2145-2217`
+- Emits `ha_token_received` WebSocket event when token set
+- Updated all client GET endpoints to include `hasHaToken` and `haTokenSetAt` fields
+- Made HA connection optional during startup (won't block if 403 error)
+- Updated pairing to continue without areas (will be set via token later)
+
+**API Endpoint:**
+```typescript
+PUT /api/clients/:clientId/ha-token
+Body: { "haToken": "eyJ0..." }
+Response: {
+  "success": true,
+  "clientId": "client_123",
+  "tokenSetAt": 1701234567890
+}
+```
+
+**WebSocket Event:**
+```typescript
+io.emit('ha_token_received', {
+  clientId: 'client_123',
+  token: 'eyJ0...',
+  timestamp: '2025-12-02T...'
+});
+```
+
+**Benefits:**
+- ✅ Each client has independent HA access
+- ✅ No backend HA configuration required
+- ✅ Admin controls which clients get access
+- ✅ Pairing works even without HA connection
+- ✅ More secure (token per client, not shared)
+- ✅ Better for multi-user households
+
+**Migration:**
+- Migration 006 adds columns to existing clients table
+- Existing clients will have `hasHaToken: false` until admin adds token
+- Backward compatible with existing pairing flow
+
+**Next Steps:**
+1. Update web UI to show "Add HA Token" button for each client
+2. Update tvOS app to store HA token in Keychain separately
+3. Add "Setup Incomplete" screen in tvOS app until token received
+4. Implement wizard integration for streamlined setup
+
+---
+
 ## v1.4.6 (2025-12-02) - Connect WebSocket on Startup 🔌
 
 ### BUG FIX 🔧

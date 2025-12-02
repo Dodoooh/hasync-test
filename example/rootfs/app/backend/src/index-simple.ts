@@ -844,19 +844,22 @@ app.post('/api/pairing/:sessionId/verify', authLimiter, asyncHandler(async (req:
   // PIN is secure enough: single-use, 5-minute expiry, admin-created
   const clientId = `client_${Date.now()}`;
 
-  // Fetch all areas from Home Assistant to assign to client
+  // NOTE: Areas are no longer auto-assigned during pairing
+  // Each client will receive their own HA token from admin via web UI
+  // For backward compatibility, we still try to fetch areas if backend HA service is configured
   let assignedAreas: string[] = [];
   try {
     if (haService) {
       const areas = await haService.getAreas();
       assignedAreas = areas.map((area: any) => area.area_id || area.id);
-      logger.info(`[Pairing] Fetched ${assignedAreas.length} areas from Home Assistant`);
+      logger.info(`[Pairing] Fetched ${assignedAreas.length} areas from Home Assistant (optional)`);
     } else {
-      logger.warn('[Pairing] Home Assistant Service not initialized - no areas assigned');
+      logger.info('[Pairing] Home Assistant Service not configured - client will receive HA token from admin');
     }
   } catch (error: any) {
-    logger.error(`[Pairing] Failed to fetch areas from Home Assistant: ${error.message}`);
-    // Continue with empty areas rather than failing the pairing
+    logger.warn(`[Pairing] Could not fetch areas from Home Assistant: ${error.message}`);
+    logger.info('[Pairing] Continuing without areas - client will receive HA token from admin');
+    // Continue with empty areas - this is now expected behavior
   }
 
   const clientToken = generateClientToken(clientId, assignedAreas);
@@ -1152,16 +1155,17 @@ const initializeHAService = async () => {
       mode: process.env.SUPERVISOR_TOKEN ? 'addon' : 'standalone'
     });
 
-    // Connect WebSocket to Home Assistant
+    // Connect WebSocket to Home Assistant (optional - for backward compatibility only)
     try {
       await haService.connect();
-      logger.info('✓ Home Assistant Service initialized and connected');
+      logger.info('✓ Home Assistant Service initialized and connected (optional - for area fetching)');
     } catch (error: any) {
-      logger.error(`Failed to connect to Home Assistant WebSocket: ${error.message}`);
-      logger.warn('⚠ Areas won\'t be auto-assigned during pairing until WebSocket connects');
+      logger.warn(`Could not connect to Home Assistant WebSocket: ${error.message}`);
+      logger.info('ℹ️  This is OK - clients will receive individual HA tokens from admin instead');
     }
   } else {
-    logger.warn('⚠ Home Assistant not configured - areas won\'t be auto-assigned during pairing');
+    logger.info('ℹ️  Home Assistant backend service not configured');
+    logger.info('ℹ️  Clients will receive individual HA tokens from admin via web UI');
   }
 };
 
@@ -1838,7 +1842,9 @@ app.get('/api/clients', readLimiter, authenticate, (_req: any, res: any) => {
           c.device_type,
           c.created_at,
           c.last_seen,
-          c.assigned_areas
+          c.assigned_areas,
+          c.ha_token,
+          c.ha_token_set_at
         FROM clients c
         WHERE c.is_active = ?
       `).all(1);
@@ -1867,7 +1873,9 @@ app.get('/api/clients', readLimiter, authenticate, (_req: any, res: any) => {
           deviceType: client.device_type,
           assignedAreas,
           createdAt: client.created_at,
-          lastSeenAt: client.last_seen
+          lastSeenAt: client.last_seen,
+          hasHaToken: !!client.ha_token,
+          haTokenSetAt: client.ha_token_set_at
         };
       });
 
@@ -1971,7 +1979,9 @@ app.get('/api/clients/:id', readLimiter, authenticate, (req: any, res: any) => {
         device_type,
         assigned_areas,
         created_at,
-        last_seen
+        last_seen,
+        ha_token,
+        ha_token_set_at
       FROM clients
       WHERE id = ? AND is_active = ?
     `).get(id, 1);
@@ -2004,7 +2014,9 @@ app.get('/api/clients/:id', readLimiter, authenticate, (req: any, res: any) => {
       deviceType: client.device_type,
       assignedAreas,
       createdAt: client.created_at,
-      lastSeenAt: client.last_seen
+      lastSeenAt: client.last_seen,
+      hasHaToken: !!client.ha_token,
+      haTokenSetAt: client.ha_token_set_at
     });
   } catch (error: any) {
     logger.error('Error fetching client:', error);
@@ -2104,7 +2116,7 @@ app.put('/api/clients/:id', writeLimiter, csrfProtection, authenticate, (req: an
 
     // Get updated client with area details
     const updated: any = db.prepare(`
-      SELECT id, name, device_type, assigned_areas, created_at, last_seen
+      SELECT id, name, device_type, assigned_areas, created_at, last_seen, ha_token, ha_token_set_at
       FROM clients
       WHERE id = ?
     `).get(id);
@@ -2131,12 +2143,88 @@ app.put('/api/clients/:id', writeLimiter, csrfProtection, authenticate, (req: an
       deviceType: updated.device_type,
       assignedAreas: assignedAreasDetails,
       createdAt: updated.created_at,
-      lastSeenAt: updated.last_seen
+      lastSeenAt: updated.last_seen,
+      hasHaToken: !!updated.ha_token,
+      haTokenSetAt: updated.ha_token_set_at
     });
   } catch (error: any) {
     logger.error('Error updating client:', error);
     res.status(500).json({
       error: 'Failed to update client',
+      message: error.message
+    });
+  }
+});
+
+// Set Home Assistant token for client (ADMIN only)
+// SECURITY: Requires ADMIN authentication
+// This endpoint allows admin to assign a HA long-lived access token to a specific client
+app.put('/api/clients/:id/ha-token', writeLimiter, csrfProtection, authenticate, (req: any, res: any) => {
+  // Only admin can set HA tokens
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Only admin users can set client HA tokens'
+    });
+  }
+
+  try {
+    const { id } = req.params;
+    const { haToken } = req.body;
+
+    // Validate input
+    if (!haToken || typeof haToken !== 'string' || haToken.trim().length === 0) {
+      return res.status(400).json({
+        error: 'Invalid HA token',
+        message: 'haToken is required and must be a non-empty string'
+      });
+    }
+
+    // Basic token format validation (HA tokens are typically long alphanumeric strings)
+    const tokenPattern = /^[A-Za-z0-9_\-\.]+$/;
+    if (!tokenPattern.test(haToken)) {
+      return res.status(400).json({
+        error: 'Invalid HA token format',
+        message: 'HA token must contain only alphanumeric characters, underscores, hyphens, and dots'
+      });
+    }
+
+    // Check if client exists
+    const existing: any = db.prepare('SELECT * FROM clients WHERE id = ? AND is_active = ?').get(id, 1);
+    if (!existing) {
+      return res.status(404).json({
+        error: 'Client not found',
+        message: `Client with id '${id}' does not exist`
+      });
+    }
+
+    // Update client with HA token
+    const now = Date.now();
+    db.prepare('UPDATE clients SET ha_token = ?, ha_token_set_at = ? WHERE id = ?')
+      .run(haToken, now, id);
+
+    logger.info(`HA token set for client ${id} by admin ${req.user.username}`);
+
+    // Emit WebSocket event to notify the connected client
+    // Client should be listening for this event and store the token
+    io.emit('ha_token_received', {
+      clientId: id,
+      token: haToken,
+      timestamp: new Date().toISOString()
+    });
+
+    logger.info(`Emitted ha_token_received event for client ${id}`);
+
+    res.json({
+      success: true,
+      message: 'HA token set successfully',
+      clientId: id,
+      tokenSetAt: now
+    });
+  } catch (error: any) {
+    logger.error('Error setting client HA token:', error);
+    res.status(500).json({
+      error: 'Failed to set HA token',
       message: error.message
     });
   }

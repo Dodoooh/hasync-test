@@ -1,6 +1,6 @@
 {
   "name": "hasync-backend",
-  "version": "1.4.6",
+  "version": "1.4.7",
   "description": "HAsync Backend API Server for Home Assistant",
   "main": "dist/index.js",
   "scripts": {
