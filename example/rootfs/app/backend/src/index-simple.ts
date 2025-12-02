@@ -55,6 +55,7 @@ import {
 } from './errors/AppError';
 import { createLogger } from './utils/logger';
 import { createAdminRouter } from './routes/admin';
+import { createAuthRouter } from './routes/auth';
 import { createRequestLoggerMiddleware } from './middleware/requestLogger';
 import {
   registerClientSocket,
@@ -2127,6 +2128,9 @@ app.post('/api/clients/:id/revoke', writeLimiter, csrfProtection, authenticate, 
 
 // Admin routes - backup, restore, security management
 app.use('/api/admin', createAdminRouter(db));
+
+// Auth routes - login, refresh, status
+app.use('/api/auth', createAuthRouter(null as any)); // PairingService not used
 
 // 404 handler (must be before error handler)
 app.use(notFoundHandler);

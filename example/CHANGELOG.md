@@ -1,3 +1,25 @@
+## v1.3.32 (2025-12-02)
+
+### Bug Fixes ✅ AUTH ROUTES FIXED
+- **Backend**: Fixed missing `/api/auth/refresh` route (404 error)
+  - **ROOT CAUSE**: Auth router was created but never mounted in Express app
+  - **SOLUTION**: Added `app.use('/api/auth', createAuthRouter())` in index-simple.ts
+  - Auth routes now properly registered: `/api/auth/login`, `/api/auth/refresh`, `/api/auth/status`
+  - **VERIFIED**: Server running successfully, WebSocket authentication working
+
+### What's Fixed
+- ✅ `/api/auth/refresh` endpoint now accessible (was returning 404)
+- ✅ `/api/auth/login` endpoint properly mounted
+- ✅ `/api/auth/status` endpoint available
+- ✅ Frontend can now refresh authentication tokens
+
+### Technical Details
+- Imported `createAuthRouter` from './routes/auth'
+- Mounted router at line 2133: `app.use('/api/auth', createAuthRouter(null as any))`
+- Note: PairingService parameter unused, passed as null
+
+---
+
 ## v1.3.31 (2025-12-02)
 
 ### Bug Fixes ✅ ROOT CAUSE FIXED

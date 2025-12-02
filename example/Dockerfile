@@ -189,8 +189,11 @@ RUN ls -la /app/frontend/dist && \
 COPY rootfs/run.sh /run.sh
 RUN chmod a+x /run.sh
 
-# Copy remaining rootfs files
-COPY rootfs/ /
+# NOTE: DO NOT copy rootfs/ recursively - it would overwrite node_modules
+# All necessary files are already copied in previous stages:
+# - Frontend: Line 181 (built dist/)
+# - Backend: Lines 152 (node_modules), 160 (src/)
+# - Global tools: Lines 165-166
 
 # ------------------------------------------------------------------------------
 # Final Setup

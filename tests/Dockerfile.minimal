@@ -1,0 +1,38 @@
+# Minimal Reproduction Dockerfile
+# Purpose: Isolate better-sqlite3 issue with absolute minimal setup
+
+ARG BUILD_FROM=ghcr.io/hassio-addons/base-python/amd64:17.0.0
+FROM ${BUILD_FROM}
+
+# Install only essential packages
+RUN apk add --no-cache \
+    nodejs \
+    npm \
+    python3 \
+    make \
+    g++
+
+# Create test directory
+WORKDIR /minimal-test
+
+# Initialize package.json
+RUN npm init -y
+
+# Install better-sqlite3 with verbose logging
+RUN npm install better-sqlite3 --build-from-source --verbose 2>&1 | tee /tmp/npm-install.log
+
+# Verify what was built
+RUN echo "=== Binary Location ===" && \
+    find /minimal-test -name "*.node" -type f && \
+    echo "=== Binary Architecture ===" && \
+    find /minimal-test -name "*.node" -exec file {} \; && \
+    echo "=== System Architecture ===" && \
+    uname -m && \
+    node -p "process.arch" && \
+    echo "=== ELF Header ===" && \
+    find /minimal-test -name "better_sqlite3.node" -exec readelf -h {} \;
+
+# Test load
+RUN node -e "const db = require('better-sqlite3')(':memory:'); console.log('SUCCESS'); db.close();"
+
+CMD ["node", "-e", "const db = require('better-sqlite3')(':memory:'); console.log('Database created successfully'); db.close();"]

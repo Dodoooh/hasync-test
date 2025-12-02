@@ -1,0 +1,423 @@
+name: Architecture Verification Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'Dockerfile'
+      - 'backend/**'
+      - 'tests/**'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Test type to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - diagnostic
+          - minimal
+          - cross-platform
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Job 1: Diagnostic Build Test
+  diagnostic-test:
+    name: Diagnostic Build Test
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'diagnostic' || github.event.inputs.test_type == '' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build diagnostic image
+        id: build
+        run: |
+          docker build \
+            -f tests/Dockerfile.diagnostic \
+            -t diagnostic-test:${{ github.sha }} \
+            . 2>&1 | tee build-diagnostic.log
+
+      - name: Run diagnostic container
+        id: run
+        continue-on-error: true
+        run: |
+          docker run --rm diagnostic-test:${{ github.sha }} > diagnostic-output.txt 2>&1
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+
+      - name: Extract internal diagnostics
+        if: always()
+        run: |
+          docker run --rm diagnostic-test:${{ github.sha }} \
+            cat /tmp/diagnostic-report.txt > diagnostic-internal.txt 2>&1 || true
+
+      - name: Upload diagnostic artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostic-results-${{ github.sha }}
+          path: |
+            build-diagnostic.log
+            diagnostic-output.txt
+            diagnostic-internal.txt
+          retention-days: 30
+
+      - name: Check test result
+        if: always()
+        run: |
+          if [ "${{ steps.run.outputs.exit_code }}" != "0" ]; then
+            echo "::error::Diagnostic test failed"
+            exit 1
+          fi
+
+  # Job 2: Minimal Reproduction Test
+  minimal-test:
+    name: Minimal Reproduction Test
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'minimal' || github.event.inputs.test_type == '' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build minimal image
+        id: build
+        run: |
+          docker build \
+            -f tests/Dockerfile.minimal \
+            -t minimal-test:${{ github.sha }} \
+            . 2>&1 | tee build-minimal.log
+
+      - name: Run minimal container
+        id: run
+        continue-on-error: true
+        run: |
+          docker run --rm minimal-test:${{ github.sha }} > minimal-output.txt 2>&1
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+
+      - name: Extract npm install log
+        if: always()
+        run: |
+          docker run --rm minimal-test:${{ github.sha }} \
+            cat /tmp/npm-install.log > npm-install.log 2>&1 || true
+
+      - name: Upload minimal artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimal-results-${{ github.sha }}
+          path: |
+            build-minimal.log
+            minimal-output.txt
+            npm-install.log
+          retention-days: 30
+
+      - name: Check test result
+        if: always()
+        run: |
+          if [ "${{ steps.run.outputs.exit_code }}" != "0" ]; then
+            echo "::error::Minimal test failed"
+            exit 1
+          fi
+
+  # Job 3: Cross-Platform Architecture Test
+  cross-platform-test:
+    name: Cross-Platform Test
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'cross-platform' || github.event.inputs.test_type == '' }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+          - linux/arm/v7
+        include:
+          - platform: linux/amd64
+            base_image: ghcr.io/hassio-addons/base-python/amd64:17.0.0
+          - platform: linux/arm64
+            base_image: ghcr.io/hassio-addons/base-python/aarch64:17.0.0
+          - platform: linux/arm/v7
+            base_image: ghcr.io/hassio-addons/base-python/armv7:17.0.0
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build for ${{ matrix.platform }}
+        id: build
+        continue-on-error: true
+        run: |
+          SAFE_PLATFORM=$(echo "${{ matrix.platform }}" | tr '/' '-')
+          docker buildx build \
+            --platform ${{ matrix.platform }} \
+            --build-arg BUILD_FROM=${{ matrix.base_image }} \
+            -f tests/Dockerfile.minimal \
+            -t cross-test:${SAFE_PLATFORM} \
+            --load \
+            . 2>&1 | tee build-${SAFE_PLATFORM}.log
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+          echo "safe_platform=${SAFE_PLATFORM}" >> $GITHUB_OUTPUT
+
+      - name: Run on ${{ matrix.platform }}
+        if: steps.build.outputs.exit_code == '0'
+        continue-on-error: true
+        run: |
+          SAFE_PLATFORM="${{ steps.build.outputs.safe_platform }}"
+          docker run \
+            --rm \
+            --platform ${{ matrix.platform }} \
+            cross-test:${SAFE_PLATFORM} \
+            > runtime-${SAFE_PLATFORM}.txt 2>&1 || true
+
+      - name: Upload cross-platform artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-platform-${{ steps.build.outputs.safe_platform }}-${{ github.sha }}
+          path: |
+            build-*.log
+            runtime-*.txt
+          retention-days: 30
+
+  # Job 4: Binary Compatibility Test
+  binary-compatibility-test:
+    name: Binary Compatibility Test
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.test_type == 'all' || github.event.inputs.test_type == '' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create binary compatibility Dockerfile
+        run: |
+          cat > Dockerfile.binary-compat <<'EOF'
+          ARG BUILD_FROM=ghcr.io/hassio-addons/base-python/amd64:17.0.0
+          FROM ${BUILD_FROM}
+
+          RUN apk add --no-cache nodejs npm python3 make g++ file binutils && \
+              mkdir /test && cd /test && \
+              npm init -y && \
+              npm install better-sqlite3 --build-from-source
+
+          RUN cd /test && \
+              echo "=== Binary Analysis ===" && \
+              find . -name "better_sqlite3.node" && \
+              find . -name "better_sqlite3.node" -exec file {} \; && \
+              find . -name "better_sqlite3.node" -exec ls -lh {} \; && \
+              find . -name "better_sqlite3.node" -exec ldd {} \; 2>&1 || true && \
+              find . -name "better_sqlite3.node" -exec readelf -h {} \; 2>&1 || true && \
+              find . -name "better_sqlite3.node" -exec nm -D {} \; 2>&1 | head -20 || true
+
+          RUN cd /test && node -e "const db = require('better-sqlite3')(':memory:'); console.log('SUCCESS'); db.close();"
+
+          CMD ["sh", "-c", "cd /test && node -e \"const db = require('better-sqlite3')(':memory:'); console.log('SUCCESS'); db.close();\""]
+          EOF
+
+      - name: Build binary compatibility image
+        id: build
+        run: |
+          docker build \
+            -f Dockerfile.binary-compat \
+            -t binary-compat:${{ github.sha }} \
+            . 2>&1 | tee build-binary-compat.log
+
+      - name: Run binary compatibility test
+        id: run
+        continue-on-error: true
+        run: |
+          docker run --rm binary-compat:${{ github.sha }} > binary-compat-output.txt 2>&1
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+
+      - name: Extract detailed binary info
+        if: always()
+        run: |
+          docker run --rm binary-compat:${{ github.sha }} \
+            sh -c "find /test -name 'better_sqlite3.node' -exec readelf -a {} \;" \
+            > binary-readelf.txt 2>&1 || true
+
+      - name: Upload binary compatibility artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-compat-results-${{ github.sha }}
+          path: |
+            build-binary-compat.log
+            binary-compat-output.txt
+            binary-readelf.txt
+          retention-days: 30
+
+      - name: Check test result
+        if: always()
+        run: |
+          if [ "${{ steps.run.outputs.exit_code }}" != "0" ]; then
+            echo "::error::Binary compatibility test failed"
+            exit 1
+          fi
+
+  # Job 5: Generate Test Report
+  generate-report:
+    name: Generate Test Report
+    runs-on: ubuntu-latest
+    needs: [diagnostic-test, minimal-test, cross-platform-test, binary-compatibility-test]
+    if: always()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: test-results
+
+      - name: Generate summary report
+        run: |
+          cat > test-summary.md <<'EOF'
+          # Architecture Verification Test Summary
+
+          ## Test Execution Details
+          - **Run ID**: ${{ github.run_id }}
+          - **Commit**: ${{ github.sha }}
+          - **Branch**: ${{ github.ref_name }}
+          - **Timestamp**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          ## Test Results
+
+          ### Diagnostic Test
+          EOF
+
+          if [ -f "test-results/diagnostic-results-${{ github.sha }}/diagnostic-output.txt" ]; then
+            if grep -q "SUCCESS" "test-results/diagnostic-results-${{ github.sha }}/diagnostic-output.txt"; then
+              echo "✅ **PASSED**" >> test-summary.md
+            else
+              echo "❌ **FAILED**" >> test-summary.md
+            fi
+          else
+            echo "⚠️ **NOT RUN**" >> test-summary.md
+          fi
+
+          cat >> test-summary.md <<'EOF'
+
+          ### Minimal Reproduction Test
+          EOF
+
+          if [ -f "test-results/minimal-results-${{ github.sha }}/minimal-output.txt" ]; then
+            if grep -q "SUCCESS" "test-results/minimal-results-${{ github.sha }}/minimal-output.txt"; then
+              echo "✅ **PASSED**" >> test-summary.md
+            else
+              echo "❌ **FAILED**" >> test-summary.md
+            fi
+          else
+            echo "⚠️ **NOT RUN**" >> test-summary.md
+          fi
+
+          cat >> test-summary.md <<'EOF'
+
+          ### Cross-Platform Tests
+          EOF
+
+          for platform in "linux-amd64" "linux-arm64" "linux-arm-v7"; do
+            echo "#### Platform: ${platform}" >> test-summary.md
+            if [ -f "test-results/cross-platform-${platform}-${{ github.sha }}/runtime-${platform}.txt" ]; then
+              if grep -q "SUCCESS" "test-results/cross-platform-${platform}-${{ github.sha }}/runtime-${platform}.txt"; then
+                echo "✅ **PASSED**" >> test-summary.md
+              else
+                echo "❌ **FAILED**" >> test-summary.md
+              fi
+            else
+              echo "⚠️ **NOT RUN**" >> test-summary.md
+            fi
+          done
+
+          cat >> test-summary.md <<'EOF'
+
+          ### Binary Compatibility Test
+          EOF
+
+          if [ -f "test-results/binary-compat-results-${{ github.sha }}/binary-compat-output.txt" ]; then
+            if grep -q "SUCCESS" "test-results/binary-compat-results-${{ github.sha }}/binary-compat-output.txt"; then
+              echo "✅ **PASSED**" >> test-summary.md
+            else
+              echo "❌ **FAILED**" >> test-summary.md
+            fi
+          else
+            echo "⚠️ **NOT RUN**" >> test-summary.md
+          fi
+
+          cat >> test-summary.md <<'EOF'
+
+          ## Artifacts
+          All test artifacts are available in the workflow run artifacts.
+
+          ## Next Steps
+          1. Review failed tests in detail
+          2. Check architecture consistency in diagnostic reports
+          3. Examine binary analysis for compatibility issues
+          4. Apply fixes to main Dockerfile based on findings
+          EOF
+
+      - name: Upload summary report
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-summary-${{ github.sha }}
+          path: test-summary.md
+          retention-days: 90
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('test-summary.md', 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+
+      - name: Job summary
+        if: always()
+        run: |
+          cat test-summary.md >> $GITHUB_STEP_SUMMARY
+
+  # Job 6: Cleanup
+  cleanup:
+    name: Cleanup Test Images
+    runs-on: ubuntu-latest
+    needs: [diagnostic-test, minimal-test, cross-platform-test, binary-compatibility-test]
+    if: always()
+
+    steps:
+      - name: Clean up test images
+        run: |
+          docker image prune -af --filter "label=test=architecture-verification"
