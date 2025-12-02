@@ -19,8 +19,7 @@ ARG BUILD_ARCH
 # ==============================================================================
 # STAGE 1: Frontend Build
 # ==============================================================================
-ARG TARGETPLATFORM
-FROM --platform=$TARGETPLATFORM node:18-alpine3.16 AS frontend-builder
+FROM node:18-alpine3.16 AS frontend-builder
 
 WORKDIR /build/frontend
 
@@ -42,9 +41,10 @@ RUN npm run build && \
 # ==============================================================================
 # STAGE 2: Backend Build + Native Modules
 # ==============================================================================
-# Use TARGETPLATFORM to build for the correct architecture
-ARG TARGETPLATFORM
-FROM --platform=$TARGETPLATFORM node:18-alpine3.16 AS backend-builder
+# IMPORTANT: Use Docker Buildx with --platform flag for correct architecture:
+#   docker buildx build --platform linux/amd64 --load -t hasync:latest .
+# This ensures native modules (better-sqlite3, bcrypt) compile for target platform
+FROM node:18-alpine3.16 AS backend-builder
 
 # Install build dependencies for native modules
 RUN apk add --no-cache \
@@ -62,7 +62,7 @@ RUN npm install --no-audit --no-fund && \
     # Verify native modules compiled successfully
     node -e "require('better-sqlite3')" && \
     node -e "require('bcrypt')" && \
-    echo "✅ Native modules compiled for $TARGETPLATFORM"
+    echo "✅ Native modules compiled successfully"
 
 # Copy backend source
 COPY rootfs/app/backend/src ./src
@@ -221,10 +221,23 @@ CMD ["/run.sh"]
 # ==============================================================================
 # Build Instructions
 # ==============================================================================
-# cd /Users/domde/Documents/CLAUDE/Addon/githubv4/example/
-# docker build \
-#   --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.15 \
-#   --build-arg TEMPIO_VERSION=2021.09.0 \
-#   --build-arg BUILD_ARCH=amd64 \
-#   -t hasync-test:latest .
+# IMPORTANT: Use Docker Buildx for correct architecture targeting
+#
+# For Home Assistant (automatic via build system):
+#   - Buildx is used automatically
+#   - Multi-arch builds work correctly
+#   - No manual intervention needed
+#
+# For local testing (manual buildx required):
+#   docker buildx create --name hasync-builder --use
+#   docker buildx build \
+#     --platform linux/amd64 \
+#     --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.15 \
+#     --build-arg TEMPIO_VERSION=2021.09.0 \
+#     --build-arg BUILD_ARCH=amd64 \
+#     --load \
+#     -t hasync-test:latest .
+#
+# Without buildx, native modules will compile for HOST architecture (not target),
+# causing "Exec format error" when running on different platforms.
 # ==============================================================================
