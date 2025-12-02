@@ -35,6 +35,20 @@ const errorHandler = (err, req, res, _next) => {
         body: req.body,
         timestamp: new Date().toISOString()
     };
+    if (err.code === 'EBADCSRFTOKEN' || err.message?.toLowerCase().includes('csrf')) {
+        logger.warn('CSRF token validation failed', errorInfo);
+        res.status(403).json({
+            error: err.message,
+            code: 'EBADCSRFTOKEN',
+            statusCode: 403,
+            timestamp: errorInfo.timestamp,
+            ...(process.env.NODE_ENV === 'development' && {
+                stack: err.stack,
+                path: req.path
+            })
+        });
+        return;
+    }
     if (err instanceof AppError_1.AppError && err.isOperational) {
         logger.warn('Operational error occurred', errorInfo);
         res.status(err.statusCode).json({

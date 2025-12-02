@@ -17,9 +17,12 @@ import {
   Alert,
   Paper,
   Chip,
+  LinearProgress,
+  CircularProgress,
 } from '@mui/material';
 import QrCode2Icon from '@mui/icons-material/QrCode2';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import TimerIcon from '@mui/icons-material/Timer';
 import { useAppStore } from '@/context/AppContext';
 import { useApi } from '@/hooks/useApi';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -44,6 +47,7 @@ export const PairingWizard: React.FC = () => {
   const [verifiedDeviceName, setVerifiedDeviceName] = useState('');
   const [verifiedDeviceType, setVerifiedDeviceType] = useState('');
   const [pinExpired, setPinExpired] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState<number>(0); // seconds remaining
 
   useEffect(() => {
     // Listen for pairing verification
@@ -66,26 +70,33 @@ export const PairingWizard: React.FC = () => {
     };
   }, [pairingSession, onWsEvent]);
 
-  // PIN expiry timer
+  // PIN expiry countdown timer (updates every second)
   useEffect(() => {
     if (!pairingSession || activeStep !== 1) {
       setPinExpired(false);
+      setTimeRemaining(0);
       return;
     }
 
-    const expiryTime = new Date(pairingSession.expiresAt).getTime();
-    const timeUntilExpiry = expiryTime - Date.now();
+    // Update countdown every second
+    const updateCountdown = () => {
+      const expiryTime = new Date(pairingSession.expiresAt).getTime();
+      const remaining = Math.max(0, Math.floor((expiryTime - Date.now()) / 1000));
 
-    if (timeUntilExpiry <= 0) {
-      setPinExpired(true);
-      return;
-    }
+      setTimeRemaining(remaining);
 
-    const timeout = setTimeout(() => {
-      setPinExpired(true);
-    }, timeUntilExpiry);
+      if (remaining <= 0) {
+        setPinExpired(true);
+      }
+    };
 
-    return () => clearTimeout(timeout);
+    // Initial update
+    updateCountdown();
+
+    // Update every second
+    const interval = setInterval(updateCountdown, 1000);
+
+    return () => clearInterval(interval);
   }, [pairingSession, activeStep]);
 
   const handleStartPairing = async () => {
@@ -125,6 +136,7 @@ export const PairingWizard: React.FC = () => {
     setVerifiedDeviceName('');
     setVerifiedDeviceType('');
     setPinExpired(false);
+    setTimeRemaining(0);
     clearEntitySelection();
   };
 
@@ -198,12 +210,76 @@ export const PairingWizard: React.FC = () => {
                   </Alert>
                 ) : (
                   <>
+                    {/* Countdown Timer Display */}
+                    <Box
+                      sx={{
+                        width: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 2
+                      }}
+                    >
+                      {/* Large Countdown */}
+                      <Paper
+                        elevation={2}
+                        sx={{
+                          p: 3,
+                          bgcolor: timeRemaining > 60 ? 'success.light' : timeRemaining > 30 ? 'warning.light' : 'error.light',
+                          borderRadius: 2,
+                          minWidth: 200,
+                          textAlign: 'center'
+                        }}
+                      >
+                        <Stack direction="row" alignItems="center" justifyContent="center" spacing={1}>
+                          <TimerIcon
+                            sx={{
+                              fontSize: 40,
+                              color: timeRemaining > 60 ? 'success.dark' : timeRemaining > 30 ? 'warning.dark' : 'error.dark'
+                            }}
+                          />
+                          <Typography
+                            variant="h3"
+                            fontWeight="bold"
+                            sx={{
+                              color: timeRemaining > 60 ? 'success.dark' : timeRemaining > 30 ? 'warning.dark' : 'error.dark'
+                            }}
+                          >
+                            {Math.floor(timeRemaining / 60)}:{String(timeRemaining % 60).padStart(2, '0')}
+                          </Typography>
+                        </Stack>
+                        <Typography
+                          variant="subtitle1"
+                          sx={{
+                            mt: 1,
+                            color: timeRemaining > 60 ? 'success.dark' : timeRemaining > 30 ? 'warning.dark' : 'error.dark'
+                          }}
+                        >
+                          Time Remaining
+                        </Typography>
+                      </Paper>
+
+                      {/* Progress Bar */}
+                      <Box sx={{ width: '100%', maxWidth: 400 }}>
+                        <LinearProgress
+                          variant="determinate"
+                          value={(timeRemaining / 300) * 100} // Assuming 5 minute max
+                          sx={{
+                            height: 8,
+                            borderRadius: 4,
+                            bgcolor: 'grey.200',
+                            '& .MuiLinearProgress-bar': {
+                              bgcolor: timeRemaining > 60 ? 'success.main' : timeRemaining > 30 ? 'warning.main' : 'error.main',
+                              borderRadius: 4
+                            }
+                          }}
+                        />
+                      </Box>
+                    </Box>
+
                     <Alert severity="info" sx={{ width: '100%' }}>
                       Waiting for client to enter PIN...
                     </Alert>
-                    <Typography variant="caption" color="text.secondary">
-                      PIN expires: {new Date(pairingSession.expiresAt).toLocaleTimeString()}
-                    </Typography>
                   </>
                 )}
 

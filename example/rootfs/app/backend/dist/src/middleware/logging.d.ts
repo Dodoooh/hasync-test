@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-export declare const httpLogger: (req: Request<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>, res: import("http").ServerResponse<import("http").IncomingMessage>, callback: (err?: Error) => void) => void;
+export declare const httpLogger: any;
 export declare const requestIdMiddleware: (req: any, res: Response, next: NextFunction) => void;
 export declare const requestTimingMiddleware: (req: any, res: Response, next: NextFunction) => void;
 export declare const errorLoggingMiddleware: (err: any, req: Request, res: Response, next: NextFunction) => void;
@@ -8,7 +8,7 @@ export declare const performanceMonitoringMiddleware: (slowThreshold?: number) =
 export declare const sanitizeForLogging: (obj: any) => any;
 export declare const detailedRequestLogging: (req: any, res: Response, next: NextFunction) => void;
 declare const _default: {
-    httpLogger: (req: Request<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>, res: import("http").ServerResponse<import("http").IncomingMessage>, callback: (err?: Error) => void) => void;
+    httpLogger: any;
     requestIdMiddleware: (req: any, res: Response, next: NextFunction) => void;
     requestTimingMiddleware: (req: any, res: Response, next: NextFunction) => void;
     errorLoggingMiddleware: (err: any, req: Request, res: Response, next: NextFunction) => void;

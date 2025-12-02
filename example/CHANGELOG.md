@@ -1,3 +1,135 @@
+## v1.4.0 (2025-12-02) - MAJOR RELEASE 🎉
+
+### NEW FEATURES ✨
+
+#### Enhanced Pairing UI with Countdown Timer
+- **Prominent Countdown Display**: Large, easy-to-read MM:SS format timer
+- **Color-Coded Urgency**:
+  - Green (>60s) - Plenty of time
+  - Yellow (30-60s) - Hurry up!
+  - Red (<30s) - Almost expired!
+- **Real-Time Progress Bar**: Visual indicator of time remaining
+- **Timer Icon**: Material-UI TimerIcon for visual clarity
+- **Removed Confusing End Time**: No more "PIN expires: HH:MM:SS" text
+
+**Technical Implementation:**
+```typescript
+// Real-time countdown with 1-second updates
+useEffect(() => {
+  const interval = setInterval(updateCountdown, 1000);
+  return () => clearInterval(interval);
+}, [pairingSession, activeStep]);
+```
+
+**User Experience:**
+- Countdown updates every second in real-time
+- Large H3 typography for visibility
+- Paper component with dynamic background color
+- Linear progress bar (8px height, rounded corners)
+- Updates urgency color as time decreases
+
+**Files Modified:**
+- `PairingWizard.tsx` - Complete countdown timer rewrite
+  - Added `timeRemaining` state
+  - Enhanced `useEffect` for real-time updates
+  - New UI components (Paper, LinearProgress, TimerIcon)
+  - Removed static expiry time display
+
+---
+
+### COMPREHENSIVE DOCUMENTATION 📚
+
+#### New Documentation Files
+- **`docs/API-REFERENCE.md`** - Complete REST API documentation
+  - All 35+ endpoints documented
+  - Request/response examples
+  - Authentication requirements
+  - Error codes and troubleshooting
+
+- **`docs/AUTHENTICATION.md`** - Authentication flow guide
+  - Admin JWT authentication
+  - Client token authentication
+  - Token management and storage
+  - CSRF protection details
+  - Security considerations
+
+- **`docs/CLIENT-PAIRING.md`** - Client pairing process
+  - Step-by-step pairing guide
+  - WebSocket events documentation
+  - Database schema
+  - Security best practices
+  - Troubleshooting common issues
+
+- **`docs/TROUBLESHOOTING.md`** - Comprehensive troubleshooting
+  - Authentication issues (v1.3.39-v1.3.44 fixes)
+  - Pairing issues with solutions
+  - Connection problems
+  - Performance optimization
+  - Docker & installation help
+
+#### Updated Documentation
+- **`README.md`** - Complete rewrite
+  - Installation guide
+  - Configuration examples
+  - Quick start tutorial
+  - Architecture overview
+  - Development setup
+  - Version history
+
+---
+
+### BUG FIXES FROM v1.3.39 - v1.3.44 🐛
+
+All critical authentication bugs from versions 1.3.39 through 1.3.44 are included and documented:
+
+1. **v1.3.44**: Fixed setAuth() overwriting admin JWT token
+2. **v1.3.43**: Fixed Settings component using fetch() instead of apiClient
+3. **v1.3.42**: Restored console logging in production builds
+4. **v1.3.41**: Added frontend version logging
+5. **v1.3.40**: Fixed race condition in token sync
+6. **v1.3.39**: Added token sync after page refresh
+
+See individual version entries below for detailed information.
+
+---
+
+### MIGRATION NOTES
+
+**From v1.3.x to v1.4.0:**
+- ✅ **No breaking changes** - Fully backward compatible
+- ✅ **Database schema unchanged** - No migration required
+- ✅ **API endpoints unchanged** - Clients continue working
+- ✅ **Configuration unchanged** - No config.yaml changes needed
+
+**What's New for Users:**
+- Enhanced pairing UI with countdown timer
+- Comprehensive documentation in `docs/` directory
+- All authentication bugs from v1.3.39-v1.3.44 fixed
+
+**What's New for Developers:**
+- Complete API reference documentation
+- Authentication flow documentation
+- Troubleshooting guide
+- Updated README with development setup
+
+---
+
+### KNOWN ISSUES
+
+None reported for v1.4.0.
+
+For issues from previous versions, see:
+- [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- [GitHub Issues](https://github.com/Dodoooh/hasync-test/issues)
+
+---
+
+### ACKNOWLEDGMENTS
+
+Special thanks to all users who reported authentication issues in v1.3.39-v1.3.44. Your detailed bug reports and logs were invaluable in identifying and fixing these critical issues.
+
+---
+
 ## v1.3.44 (2025-12-02)
 
 ### CRITICAL FIX 🔥 setAuth() Overwrites Admin JWT Token

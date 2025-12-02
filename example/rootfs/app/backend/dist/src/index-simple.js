@@ -27,12 +27,13 @@ const errorHandler_1 = require("./middleware/errorHandler");
 const AppError_1 = require("./errors/AppError");
 const logger_1 = require("./utils/logger");
 const admin_1 = require("./routes/admin");
+const auth_1 = require("./routes/auth");
 const requestLogger_1 = require("./middleware/requestLogger");
 const websocket_events_1 = require("./services/websocket-events");
 const tokenUtils_1 = require("./utils/tokenUtils");
 const migrate_pairing_1 = require("./database/migrate-pairing");
 const logger = (0, logger_1.createLogger)('Server');
-const VERSION = '1.3.25';
+const VERSION = '1.3.39';
 (0, errorHandler_1.setupUnhandledRejectionHandler)();
 (0, errorHandler_1.setupUncaughtExceptionHandler)();
 const tlsOptions = (0, tls_1.getTLSOptionsFromEnv)();
@@ -166,8 +167,18 @@ const readLimiter = (0, express_rate_limit_1.default)({
     }
 });
 const authenticate = (req, res, next) => {
+    logger.debug('Authenticate middleware', {
+        method: req.method,
+        path: req.path,
+        hasAuthHeader: !!req.headers.authorization,
+        authHeaderPreview: req.headers.authorization ? req.headers.authorization.substring(0, 20) + '...' : 'none'
+    });
     const token = req.headers.authorization?.replace('Bearer ', '');
     if (!token) {
+        logger.warn('Authentication failed: No token provided', {
+            path: req.path,
+            method: req.method
+        });
         return res.status(401).json({
             error: 'Unauthorized',
             message: 'No token provided'
@@ -201,7 +212,7 @@ const authenticate = (req, res, next) => {
                 role: 'client',
                 assignedAreas: client.assigned_areas ? JSON.parse(client.assigned_areas) : []
             };
-            db.prepare('UPDATE clients SET last_seen_at = ? WHERE id = ?').run(Date.now(), client.id);
+            db.prepare('UPDATE clients SET last_seen = ? WHERE id = ?').run(Math.floor(Date.now() / 1000), client.id);
             next();
         }
         else {
@@ -331,13 +342,26 @@ const csrfMiddleware = (0, csurf_1.default)({
 });
 const csrfProtection = (req, res, next) => {
     const authHeader = req.get('authorization');
+    const csrfToken = req.get('x-csrf-token') || req.get('csrf-token');
+    logger.debug('CSRF Protection Check', {
+        method: req.method,
+        path: req.path,
+        hasAuthHeader: !!authHeader,
+        authHeaderValue: authHeader ? `${authHeader.substring(0, 20)}...` : 'none',
+        hasCsrfToken: !!csrfToken,
+        allHeaders: Object.keys(req.headers)
+    });
     if (authHeader && authHeader.startsWith('Bearer ')) {
-        logger.info('Skipping CSRF for JWT-authenticated request', {
+        logger.info('✓ Skipping CSRF for JWT-authenticated request', {
             method: req.method,
             path: req.path
         });
         return next();
     }
+    logger.debug('Using CSRF middleware (no JWT Bearer token found)', {
+        method: req.method,
+        path: req.path
+    });
     csrfMiddleware(req, res, next);
 };
 app.get('/api/csrf-token', csrfMiddleware, (req, res) => {
@@ -656,14 +680,15 @@ app.post('/api/pairing/:sessionId/complete', authLimiter, authenticate, (0, erro
       last_seen,
       is_active,
       assigned_areas,
-      metadata
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      metadata,
+      token_hash
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(clientId, database_security_1.InputSanitizer.sanitizeString(clientName, 100), session.device_type, tokenHash, tokenHash, now, now, 1, JSON.stringify(assignedAreas), JSON.stringify({
         deviceName: session.device_name,
         sessionId: sessionId,
         approvedBy: req.user.username,
         approvedAt: new Date().toISOString()
-    }));
+    }), tokenHash);
     db.prepare(`
     UPDATE pairing_sessions
     SET status = 'completed',
@@ -1138,7 +1163,7 @@ app.get('/api/dashboards', readLimiter, authenticate, (_req, res) => {
         { dashboard_id: 'mobile', name: 'Mobile Dashboard' }
     ]);
 });
-app.post('/api/auth/login', authLimiter, (req, res) => {
+app.post('/api/admin/login', authLimiter, (req, res) => {
     const { username, password } = req.body;
     const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'test123';
@@ -1265,7 +1290,7 @@ app.get('/api/clients', readLimiter, authenticate, (_req, res) => {
           c.name,
           c.device_type,
           c.created_at,
-          c.last_seen_at,
+          c.last_seen,
           c.assigned_areas
         FROM clients c
         WHERE c.is_active = ?
@@ -1290,7 +1315,7 @@ app.get('/api/clients', readLimiter, authenticate, (_req, res) => {
                     deviceType: client.device_type,
                     assignedAreas,
                     createdAt: client.created_at,
-                    lastSeenAt: client.last_seen_at
+                    lastSeenAt: client.last_seen
                 };
             });
             res.json(clientsWithAreas || []);
@@ -1306,7 +1331,7 @@ app.get('/api/clients', readLimiter, authenticate, (_req, res) => {
 });
 app.get('/api/clients/me', readLimiter, authenticate, (req, res) => {
     try {
-        const clientId = req.user.username;
+        const clientId = req.user.clientId || req.user.id;
         if (!clientId) {
             return res.status(401).json({
                 error: 'Invalid token',
@@ -1320,7 +1345,7 @@ app.get('/api/clients/me', readLimiter, authenticate, (req, res) => {
         device_type,
         assigned_areas,
         created_at,
-        last_seen_at
+        last_seen
       FROM clients
       WHERE id = ? AND is_active = ?
     `).get(clientId, 1);
@@ -1350,7 +1375,7 @@ app.get('/api/clients/me', readLimiter, authenticate, (req, res) => {
             deviceType: client.device_type,
             assignedAreas,
             createdAt: client.created_at,
-            lastSeenAt: client.last_seen_at
+            lastSeenAt: client.last_seen
         });
     }
     catch (error) {
@@ -1377,7 +1402,7 @@ app.get('/api/clients/:id', readLimiter, authenticate, (req, res) => {
         device_type,
         assigned_areas,
         created_at,
-        last_seen_at
+        last_seen
       FROM clients
       WHERE id = ? AND is_active = ?
     `).get(id, 1);
@@ -1406,7 +1431,7 @@ app.get('/api/clients/:id', readLimiter, authenticate, (req, res) => {
             deviceType: client.device_type,
             assignedAreas,
             createdAt: client.created_at,
-            lastSeenAt: client.last_seen_at
+            lastSeenAt: client.last_seen
         });
     }
     catch (error) {
@@ -1485,7 +1510,7 @@ app.put('/api/clients/:id', writeLimiter, csrfProtection, authenticate, (req, re
             });
         }
         const updated = db.prepare(`
-      SELECT id, name, device_type, assigned_areas, created_at, last_seen_at
+      SELECT id, name, device_type, assigned_areas, created_at, last_seen
       FROM clients
       WHERE id = ?
     `).get(id);
@@ -1509,7 +1534,7 @@ app.put('/api/clients/:id', writeLimiter, csrfProtection, authenticate, (req, re
             deviceType: updated.device_type,
             assignedAreas: assignedAreasDetails,
             createdAt: updated.created_at,
-            lastSeenAt: updated.last_seen_at
+            lastSeenAt: updated.last_seen
         });
     }
     catch (error) {
@@ -1614,6 +1639,7 @@ app.post('/api/clients/:id/revoke', writeLimiter, csrfProtection, authenticate, 
     }
 });
 app.use('/api/admin', (0, admin_1.createAdminRouter)(db));
+app.use('/api/auth', (0, auth_1.createAuthRouter)(null));
 app.use(errorHandler_1.notFoundHandler);
 app.use(errorHandler_1.errorHandler);
 io.use(socketAuth_1.socketAuthMiddleware);
