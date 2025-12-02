@@ -1,4 +1,4 @@
-## v1.3.26 ($(date +%Y-%m-%d))
+## v1.3.26 (2025-12-02)
 
 ### Bug Fixes
 - **Docker**: Fixed native module architecture mismatch (better-sqlite3)
