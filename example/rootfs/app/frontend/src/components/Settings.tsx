@@ -53,13 +53,11 @@ export const Settings: React.FC = () => {
   useEffect(() => {
     const loadSavedConfig = async () => {
       try {
-        const response = await fetch('/api/config/ha');
-        if (response.ok) {
-          const config = await response.json();
-          if (config.url) setUrl(config.url);
-          if (config.token) setToken(config.token);
-          console.log('Loaded saved config from database');
-        }
+        // Use apiClient to automatically include Authorization header
+        const config = await apiClient.getHAConfig();
+        if (config.url) setUrl(config.url);
+        if (config.token) setToken(config.token);
+        console.log('Loaded saved config from database');
       } catch (error) {
         console.error('Failed to load saved config:', error);
       }
@@ -168,15 +166,8 @@ export const Settings: React.FC = () => {
 
     try {
       // Save to backend database (persistent across sessions)
-      const response = await fetch('/api/config/ha', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, token }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save configuration');
-      }
+      // Use apiClient to automatically include Authorization header and CSRF token
+      await apiClient.saveHAConfig(url, token);
 
       // Update local state
       setAuth(url, token);

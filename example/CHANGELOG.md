@@ -1,3 +1,65 @@
+## v1.3.43 (2025-12-02)
+
+### CRITICAL FIX 🔧 Settings Component Authentication Bug
+- **Problem**: Settings component was using direct `fetch()` instead of `apiClient`
+  - GET `/api/config/ha` sent without Authorization header → 401 Unauthorized
+  - POST `/api/config/ha` sent without Authorization header → 403 CSRF validation failed
+  - User could not save Home Assistant configuration despite being logged in
+
+### The Root Cause
+**Files**: `Settings.tsx` lines 55 and 171
+```typescript
+// BUG #1 (Line 55) - GET request without token
+const response = await fetch('/api/config/ha');  // ❌ No Authorization header!
+
+// BUG #2 (Line 171) - POST request without token
+const response = await fetch('/api/config/ha', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },  // ❌ No Authorization header!
+  body: JSON.stringify({ url, token }),
+});
+```
+
+### The Fix
+**Changed to use `apiClient`** which automatically includes:
+- ✅ Authorization header with JWT Bearer token
+- ✅ CSRF token handling
+- ✅ Request/response interceptors
+- ✅ Error handling
+
+```typescript
+// FIX #1 - GET with apiClient
+const config = await apiClient.getHAConfig();
+
+// FIX #2 - POST with apiClient
+await apiClient.saveHAConfig(url, token);
+```
+
+### New Methods Added to apiClient
+```typescript
+// client.ts lines 353-361
+async getHAConfig(): Promise<{ url?: string; token?: string }> {
+  const { data } = await this.instance.get<{ url?: string; token?: string }>('/config/ha');
+  return data;
+}
+
+async saveHAConfig(url: string, token: string): Promise<void> {
+  await this.instance.post('/config/ha', { url, token });
+}
+```
+
+### What This Fixes
+- ✅ **Settings page now works** - Can save Home Assistant configuration
+- ✅ **401 errors gone** - Authorization header properly sent
+- ✅ **403 CSRF errors gone** - CSRF skip logic activated with JWT token
+- ✅ **Consistent API usage** - All components now use apiClient
+
+### Files Modified
+- `Settings.tsx` - Replaced fetch() with apiClient calls
+- `client.ts` - Added getHAConfig() and saveHAConfig() methods
+
+---
+
 ## v1.3.42 (2025-12-02)
 
 ### CRITICAL FIX 🔧 Console Logging Restored

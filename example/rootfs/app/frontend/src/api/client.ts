@@ -349,6 +349,16 @@ class ApiClient {
     const { data } = await this.instance.get('/health');
     return data;
   }
+
+  // Home Assistant Configuration endpoints
+  async getHAConfig(): Promise<{ url?: string; token?: string }> {
+    const { data } = await this.instance.get<{ url?: string; token?: string }>('/config/ha');
+    return data;
+  }
+
+  async saveHAConfig(url: string, token: string): Promise<void> {
+    await this.instance.post('/config/ha', { url, token });
+  }
 }
 
 export const apiClient = new ApiClient();
