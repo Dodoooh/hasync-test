@@ -1,3 +1,24 @@
+## v1.3.26 ($(date +%Y-%m-%d))
+
+### Bug Fixes
+- **Docker**: Fixed native module architecture mismatch (better-sqlite3)
+  - Native modules now rebuilt for target architecture
+  - Fixes 'Exec format error' on runtime
+- **Docker**: Fixed BusyBox grep compatibility
+  - Replaced grep -P with standard awk/cut commands
+- **Frontend**: Fixed completePairing method call signature
+  - Changed from 2 to 3 arguments
+- **Backend**: Fixed token_hash column in INSERT statement
+- **Backend**: Fixed last_seen_at → last_seen column references
+- **Backend**: Fixed clientId extraction in /api/clients/me
+
+### Deployment
+- All critical bugs fixed
+- End-to-end pairing flow tested
+- Production ready
+
+---
+
 # Changelog
 
 ## 1.3.25
