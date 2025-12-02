@@ -306,6 +306,11 @@ class ApiClient {
     await this.instance.post(`/clients/${id}/revoke`);
   }
 
+  async setClientHaToken(id: string, haToken: string): Promise<{ success: boolean; clientId: string; tokenSetAt: number }> {
+    const { data } = await this.instance.put<{ success: boolean; clientId: string; tokenSetAt: number }>(`/clients/${id}/ha-token`, { haToken });
+    return data;
+  }
+
   // Client self-service (for client apps)
   async getMyClientInfo(): Promise<Client> {
     const { data } = await this.instance.get<Client>('/clients/me');

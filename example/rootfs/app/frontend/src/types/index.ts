@@ -49,6 +49,8 @@ export interface Client {
   lastSeenAt?: Date;
   ipAddress?: string;
   tokenHash?: string;
+  hasHaToken?: boolean;
+  haTokenSetAt?: number;
 }
 
 export interface PairingSession {

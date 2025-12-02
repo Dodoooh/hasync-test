@@ -28,6 +28,8 @@ import {
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import BlockIcon from '@mui/icons-material/Block';
+import VpnKeyIcon from '@mui/icons-material/VpnKey';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PhoneAndroidIcon from '@mui/icons-material/PhoneAndroid';
 import TabletIcon from '@mui/icons-material/Tablet';
 import ComputerIcon from '@mui/icons-material/Computer';
@@ -215,6 +217,102 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   );
 };
 
+interface HaTokenDialogProps {
+  open: boolean;
+  client: Client | null;
+  onClose: () => void;
+  onSave: (clientId: string, token: string) => Promise<void>;
+}
+
+const HaTokenDialog: React.FC<HaTokenDialogProps> = ({
+  open,
+  client,
+  onClose,
+  onSave,
+}) => {
+  const [haToken, setHaToken] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setHaToken('');
+    }
+  }, [open]);
+
+  const handleSave = async () => {
+    if (!client || !haToken.trim()) return;
+
+    setSaving(true);
+    try {
+      await onSave(client.id, haToken.trim());
+      onClose();
+    } catch (error) {
+      console.error('Failed to set HA token:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Add Home Assistant Token</DialogTitle>
+      <DialogContent>
+        <Stack spacing={3} sx={{ mt: 1 }}>
+          <Alert severity="info">
+            Enter a long-lived access token from Home Assistant for this client.
+            The client will use this token to access Home Assistant independently.
+          </Alert>
+
+          <TextField
+            label="Home Assistant Token"
+            value={haToken}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setHaToken(e.target.value)}
+            fullWidth
+            autoFocus
+            multiline
+            rows={4}
+            placeholder="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+            helperText="Get a long-lived token from Home Assistant Profile → Security → Long-Lived Access Tokens"
+          />
+
+          {client && (
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                Client: {client.name}
+              </Typography>
+              <br />
+              <Typography variant="caption" color="text.secondary">
+                Device: {client.deviceType}
+              </Typography>
+              {client.hasHaToken && client.haTokenSetAt && (
+                <>
+                  <br />
+                  <Typography variant="caption" color="success.main">
+                    ✓ Token already set on {new Date(client.haTokenSetAt).toLocaleString()}
+                  </Typography>
+                </>
+              )}
+            </Box>
+          )}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={saving}>
+          Cancel
+        </Button>
+        <Button
+          onClick={handleSave}
+          variant="contained"
+          disabled={saving || !haToken.trim()}
+          startIcon={saving ? <CircularProgress size={20} /> : <VpnKeyIcon />}
+        >
+          {saving ? 'Setting Token...' : 'Set Token'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 export const ClientManagement: React.FC = () => {
   const { areas } = useAppStore();
   const { on } = useWebSocket();
@@ -225,6 +323,7 @@ export const ClientManagement: React.FC = () => {
 
   // Dialog states
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [haTokenDialogOpen, setHaTokenDialogOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [revokeDialogOpen, setRevokeDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -389,6 +488,29 @@ export const ClientManagement: React.FC = () => {
     }
   };
 
+  const handleHaTokenClick = (client: Client) => {
+    setSelectedClient(client);
+    setHaTokenDialogOpen(true);
+  };
+
+  const handleSaveHaToken = async (clientId: string, token: string) => {
+    try {
+      await apiClient.setClientHaToken(clientId, token);
+      // Update client in state
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id === clientId
+            ? { ...c, hasHaToken: true, haTokenSetAt: Date.now() }
+            : c
+        )
+      );
+      showSnackbar('HA token set successfully and sent to client', 'success');
+    } catch (err: any) {
+      showSnackbar(err.message || 'Failed to set HA token', 'error');
+      throw err;
+    }
+  };
+
   const getAreaNames = (areaIds: string[]): string[] => {
     return areaIds
       .map((id) => areas.find((a) => a.id === id)?.name)
@@ -427,6 +549,7 @@ export const ClientManagement: React.FC = () => {
                       <TableCell>Name</TableCell>
                       <TableCell>Device Type</TableCell>
                       <TableCell>Assigned Areas</TableCell>
+                      <TableCell>HA Token</TableCell>
                       <TableCell>Last Seen</TableCell>
                       <TableCell>Status</TableCell>
                       <TableCell align="right">Actions</TableCell>
@@ -460,6 +583,24 @@ export const ClientManagement: React.FC = () => {
                           )}
                         </TableCell>
                         <TableCell>
+                          {client.hasHaToken ? (
+                            <Chip
+                              icon={<CheckCircleIcon />}
+                              label="Set"
+                              color="success"
+                              size="small"
+                              variant="outlined"
+                            />
+                          ) : (
+                            <Chip
+                              label="Not Set"
+                              color="warning"
+                              size="small"
+                              variant="outlined"
+                            />
+                          )}
+                        </TableCell>
+                        <TableCell>
                           <Typography variant="body2">
                             {formatDateTime(client.lastSeen)}
                           </Typography>
@@ -473,6 +614,14 @@ export const ClientManagement: React.FC = () => {
                         </TableCell>
                         <TableCell align="right">
                           <Stack direction="row" spacing={1} justifyContent="flex-end">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleHaTokenClick(client)}
+                              title={client.hasHaToken ? "Update HA token" : "Add HA token"}
+                              color={client.hasHaToken ? "success" : "warning"}
+                            >
+                              <VpnKeyIcon fontSize="small" />
+                            </IconButton>
                             <IconButton
                               size="small"
                               onClick={() => handleEditClick(client)}
@@ -539,6 +688,17 @@ export const ClientManagement: React.FC = () => {
           setSelectedClient(null);
         }}
         onSave={handleSaveClient}
+      />
+
+      {/* HA Token Dialog */}
+      <HaTokenDialog
+        open={haTokenDialogOpen}
+        client={selectedClient}
+        onClose={() => {
+          setHaTokenDialogOpen(false);
+          setSelectedClient(null);
+        }}
+        onSave={handleSaveHaToken}
       />
 
       {/* Revoke Token Confirmation */}
