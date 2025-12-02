@@ -1,3 +1,64 @@
+## v1.3.39 (2025-12-02)
+
+### CRITICAL FIX ✅ JWT Token Not Sent to API
+- **Frontend**: Fixed JWT token not being set in API client after login/refresh
+  - **ROOT CAUSE**: `accessToken` from Zustand store was never synced to `apiClient`
+  - When user logged in, token was stored in state but NOT in apiClient
+  - After page refresh, token was restored from localStorage to state but NOT to apiClient
+  - Result: All API requests sent WITHOUT Authorization header → 401/403 errors
+
+### The Fix (App.tsx lines 64-76)
+- **NEW**: Added useEffect to sync `accessToken` from Zustand store to apiClient
+- Runs whenever `isAuthenticated` or `accessToken` changes
+- Ensures Authorization: Bearer <token> header is included in ALL API requests
+- Also syncs token to WebSocket client for consistent auth
+
+### What This Fixes
+- ✅ API requests now include JWT Bearer token in Authorization header
+- ✅ CSRF protection correctly skips validation when JWT token present
+- ✅ No more 401 Unauthorized errors on `/api/entities`, `/api/clients`, etc.
+- ✅ No more 403 CSRF errors on `/api/config/ha` POST requests
+- ✅ Token properly restored after page refresh
+- ✅ Token properly set immediately after login
+
+### Technical Details
+```typescript
+// App.tsx lines 64-76: Token synchronization
+useEffect(() => {
+  if (isAuthenticated && accessToken) {
+    apiClient.setAuthToken(accessToken);  // ← THE MISSING LINE!
+    wsClient.setAuthToken(accessToken);
+  }
+}, [isAuthenticated, accessToken]);
+```
+
+---
+
+## v1.3.38 (2025-12-02)
+
+### Enhanced Debugging for Authentication Issues ⚙️
+- **Backend**: Added comprehensive logging to diagnose CSRF/JWT authentication flow
+  - **csrfProtection middleware**: Enhanced with detailed logging of headers and tokens
+  - **authenticate middleware**: Added debug logging to trace JWT token presence
+  - **PURPOSE**: Identify why JWT Bearer tokens aren't bypassing CSRF protection
+  - **LOGS NOW SHOW**: Authorization header presence, CSRF token presence, all request headers
+  - Clear messages when CSRF is skipped vs. when CSRF validation is used
+
+### Debug Information Logged
+- Method and path for all protected requests
+- Authorization header presence and preview (first 20 chars)
+- CSRF token presence (X-CSRF-Token or CSRF-Token headers)
+- All request headers listed
+- "✓ Skipping CSRF for JWT-authenticated request" when JWT detected
+- "Using CSRF middleware (no JWT Bearer token found)" when JWT missing
+
+### Next Step
+- User should test v1.3.38 and check server logs during HA config save
+- Logs will reveal if Authorization header with JWT token is being sent
+- This will identify if problem is frontend (not sending token) or backend (not detecting token)
+
+---
+
 ## v1.3.37 (2025-12-02)
 
 ### Critical Fix ✅ JWT AUTH WORKING

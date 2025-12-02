@@ -84,7 +84,7 @@ import { migratePairingTables, startPairingCleanupJob } from './database/migrate
 const logger = createLogger('Server');
 
 // Version from config.yaml
-const VERSION = '1.3.37';
+const VERSION = '1.3.39';
 
 // Setup global error handlers
 setupUnhandledRejectionHandler();
@@ -250,8 +250,19 @@ const readLimiter = rateLimit({
 
 // Authentication Middleware - Extract and verify JWT token (supports both admin and client tokens)
 const authenticate = (req, res, next) => {
+  logger.debug('Authenticate middleware', {
+    method: req.method,
+    path: req.path,
+    hasAuthHeader: !!req.headers.authorization,
+    authHeaderPreview: req.headers.authorization ? req.headers.authorization.substring(0, 20) + '...' : 'none'
+  });
+
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) {
+    logger.warn('Authentication failed: No token provided', {
+      path: req.path,
+      method: req.method
+    });
     return res.status(401).json({
       error: 'Unauthorized',
       message: 'No token provided'
@@ -458,15 +469,32 @@ const csrfMiddleware = csrf({
 // Conditional CSRF protection: Skip CSRF for JWT-authenticated requests (API clients)
 // Use CSRF only for cookie-based auth (web forms)
 const csrfProtection = (req: any, res: any, next: any) => {
-  // Skip CSRF if using Bearer token (JWT authentication)
+  // ENHANCED DEBUGGING: Log all request details
   const authHeader = req.get('authorization');
+  const csrfToken = req.get('x-csrf-token') || req.get('csrf-token');
+
+  logger.debug('CSRF Protection Check', {
+    method: req.method,
+    path: req.path,
+    hasAuthHeader: !!authHeader,
+    authHeaderValue: authHeader ? `${authHeader.substring(0, 20)}...` : 'none',
+    hasCsrfToken: !!csrfToken,
+    allHeaders: Object.keys(req.headers)
+  });
+
+  // Skip CSRF if using Bearer token (JWT authentication)
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    logger.info('Skipping CSRF for JWT-authenticated request', {
+    logger.info('✓ Skipping CSRF for JWT-authenticated request', {
       method: req.method,
       path: req.path
     });
     return next();
   }
+
+  logger.debug('Using CSRF middleware (no JWT Bearer token found)', {
+    method: req.method,
+    path: req.path
+  });
 
   // Use CSRF for cookie-based auth
   csrfMiddleware(req, res, next);

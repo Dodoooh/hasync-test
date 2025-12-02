@@ -53,13 +53,27 @@ const navItems = [
 ];
 
 const App: React.FC = () => {
-  const { isAuthenticated, setAuth, clearAuth, setEntities, setAreas, setLoading } = useAppStore();
+  const { isAuthenticated, accessToken, setAuth, clearAuth, setEntities, setAreas, setLoading } = useAppStore();
   const { connect, disconnect } = useWebSocket();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const [currentTab, setCurrentTab] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // CRITICAL FIX: Sync accessToken from Zustand store to apiClient
+  // This ensures API requests include Authorization header after page refresh
+  useEffect(() => {
+    if (isAuthenticated && accessToken) {
+      console.log('✓ Restoring API client token from store');
+      apiClient.setAuthToken(accessToken);
+      wsClient.setAuthToken(accessToken);
+    } else {
+      console.log('✗ No token to restore (not authenticated)');
+      apiClient.setAuthToken(null);
+      wsClient.setAuthToken(null);
+    }
+  }, [isAuthenticated, accessToken]);
 
   // Fetch entities and areas when authenticated
   useEffect(() => {
