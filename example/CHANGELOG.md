@@ -1,3 +1,37 @@
+## v1.4.4 (2025-12-02) - Fix Area Fetching Error Handling 🐛
+
+### BUG FIX 🔧
+
+#### Fix HomeAssistant getAreas() JSON Parse Error
+**FIXED**: Backend now properly handles errors when fetching areas from Home Assistant.
+
+**Problem:**
+- `getAreas()` would crash with "Unexpected token : in JSON" when HA API returned an error
+- No error checking on HTTP response status
+- Clients received 0 areas due to silent failures
+
+**Solution:**
+```typescript
+// Added proper error handling
+if (!response.ok) {
+  throw new Error(`Failed to fetch areas: ${response.status} ${response.statusText}`);
+}
+
+const text = await response.text();
+try {
+  return JSON.parse(text);
+} catch (error) {
+  throw new Error(`Failed to parse areas response: ${error.message}. Response: ${text.substring(0, 100)}`);
+}
+```
+
+**Backend Changes:**
+- Added HTTP response status checking in `homeassistant.ts:185-187`
+- Added JSON parse error handling with response preview in `homeassistant.ts:189-194`
+- Better error messages for debugging
+
+---
+
 ## v1.4.3 (2025-12-02) - Auto-Assign Home Assistant Areas 🏠
 
 ### FEATURE ENHANCEMENT ✨
