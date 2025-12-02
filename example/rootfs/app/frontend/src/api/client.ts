@@ -59,10 +59,10 @@ class ApiClient {
         }
 
         // Handle 401 errors by attempting token refresh
-        if (error.response?.status === 401 && !error.config?.url?.includes('/api/auth/')) {
+        if (error.response?.status === 401 && !error.config?.url?.includes('/auth/')) {
           try {
             // Attempt to refresh the token
-            await this.instance.post('/api/auth/refresh');
+            await this.instance.post('/auth/refresh');
 
             // Retry the original request with new token in cookie
             if (error.config) {

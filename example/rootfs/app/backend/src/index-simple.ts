@@ -1547,8 +1547,12 @@ app.get('/api/dashboards', readLimiter, authenticate, (_req, res) => {
   ]);
 });
 
-// Login endpoint - Fixed admin credentials from env - strict rate limiting for brute force protection
-// Login endpoint - CSRF protection exempted (users need to login first to get CSRF token)
+// ===== OLD LOGIN ENDPOINT - DISABLED =====
+// REASON: Conflicts with new auth router at /api/auth (mounted at line 2133)
+// This old endpoint expected { username, password }, but frontend sends { ingressUrl, token }
+// New auth router uses cookie-based auth with httpOnly cookies for better security
+// Kept here for reference only - DO NOT UNCOMMENT
+/*
 app.post('/api/auth/login', authLimiter, (req, res) => {
   const { username, password } = req.body;
   const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
@@ -1584,6 +1588,8 @@ app.post('/api/auth/login', authLimiter, (req, res) => {
       res.status(401).json({ error: 'Invalid credentials. Only admin user is allowed.' });
   }
 });
+*/
+// ===== END OLD LOGIN ENDPOINT =====
 
 // Save HA config endpoint
 // SECURITY: CRITICAL - Requires admin authentication - HA token is sensitive!

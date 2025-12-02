@@ -1,3 +1,30 @@
+## v1.3.34 (2025-12-02)
+
+### Critical Bug Fixes ✅ AUTH ROUTING FIXED
+- **Frontend**: Fixed double `/api/api/` prefix causing 404 on refresh
+  - **ROOT CAUSE**: axios instance has `baseURL: '/api'`, but was adding `/api/auth/refresh` → `/api/api/auth/refresh`
+  - **SOLUTION**: Reverted to `/auth/refresh` (without `/api` prefix) since baseURL already has it
+  - All other endpoints follow this pattern (e.g., `/config`, `/entities`, `/areas`)
+
+- **Backend**: Removed conflicting old login endpoint
+  - **ROOT CAUSE**: Two login endpoints registered - old one at line 1552 took precedence
+  - Old endpoint expected `{ username, password }`, but frontend sends `{ ingressUrl, token }`
+  - **SOLUTION**: Commented out old login endpoint (lines 1550-1592)
+  - Now uses auth router's login endpoint with cookie-based authentication
+
+### What's Fixed
+- ✅ Auth refresh endpoint now accessible (was `/api/api/auth/refresh` 404)
+- ✅ Login endpoint accepts correct parameters (ingressUrl, token)
+- ✅ Cookie-based authentication working correctly
+- ✅ No more endpoint conflicts
+
+### Technical Details
+- client.ts line 65: `/api/auth/refresh` → `/auth/refresh`
+- client.ts line 62: URL check `/api/auth/` → `/auth/`
+- index-simple.ts lines 1550-1592: Commented out old login endpoint
+
+---
+
 ## v1.3.33 (2025-12-02)
 
 ### Bug Fixes ✅ CSRF & FRONTEND FIXES
