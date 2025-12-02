@@ -1,3 +1,35 @@
+## v1.3.37 (2025-12-02)
+
+### Critical Fix ✅ JWT AUTH WORKING
+- **Frontend**: Disabled incompatible auto-refresh for JWT authentication
+  - **ROOT CAUSE**: `/auth/refresh` endpoint is for cookie-based auth (new auth router)
+  - JWT tokens from `/api/admin/login` were trying to use cookie-refresh endpoint
+  - Cookie-refresh returns 200 but doesn't generate new JWT tokens
+  - Result: Subsequent API calls get 401 Unauthorized
+  - **SOLUTION**: Disabled auto-refresh interceptor for JWT auth
+  - JWT tokens now simply expire and user must re-login
+
+### What's Fixed
+- ✅ Admin login with JWT now works correctly
+- ✅ No more infinite 401/refresh loops
+- ✅ WebSocket authentication working
+- ✅ All API endpoints accessible after login
+- ✅ Clean re-login when token expires
+
+### Technical Details
+- client.ts lines 61-68: Disabled JWT token auto-refresh
+- JWT tokens expire naturally (15 minutes by default)
+- User will see login screen when token expires
+- Cookie-based auth (/api/auth/login) still has auto-refresh working
+
+### Authentication Methods
+1. **Admin Login** (JWT): `/api/admin/login` with username/password
+   - Returns JWT token, expires after 15min, requires re-login
+2. **HA Token Auth** (Cookies): `/api/auth/login` with ingressUrl/token
+   - Uses httpOnly cookies, auto-refresh works
+
+---
+
 ## v1.3.36 (2025-12-02)
 
 ### Frontend Fix ✅ LOGIN FORM UPDATED

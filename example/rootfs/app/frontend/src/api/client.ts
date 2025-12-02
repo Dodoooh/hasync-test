@@ -58,20 +58,13 @@ class ApiClient {
           }
         }
 
-        // Handle 401 errors by attempting token refresh
-        if (error.response?.status === 401 && !error.config?.url?.includes('/auth/')) {
-          try {
-            // Attempt to refresh the token
-            await this.instance.post('/auth/refresh');
-
-            // Retry the original request with new token in cookie
-            if (error.config) {
-              return this.instance.request(error.config);
-            }
-          } catch (refreshError) {
-            // Refresh failed, dispatch event for app to handle re-auth
-            window.dispatchEvent(new Event('auth:expired'));
-          }
+        // Handle 401 errors - JWT tokens expire, user must re-login
+        // DISABLED: Auto-refresh doesn't work with JWT auth (only for cookie auth)
+        // The /auth/refresh endpoint is for cookie-based auth from the new auth router
+        // JWT tokens from /api/admin/login should simply expire and require re-login
+        if (error.response?.status === 401 && !error.config?.url?.includes('/auth/') && !error.config?.url?.includes('/admin/')) {
+          // Dispatch event for app to handle re-auth (show login screen)
+          window.dispatchEvent(new Event('auth:expired'));
         }
 
         const apiError: ApiError = {
