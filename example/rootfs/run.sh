@@ -31,10 +31,10 @@ bashio::log.info "Detecting network interfaces..."
 IPS_HOSTNAME=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.' || echo "")
 
 # Method 2: ip addr show (more reliable in containers)
-IPS_IP_ADDR=$(ip addr show 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '127.0.0.1' || echo "")
+IPS_IP_ADDR=$(ip addr show 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1 | grep -v '127.0.0.1' || echo "")
 
 # Method 3: ip route get (gets the primary outbound IP)
-PRIMARY_IP=$(ip route get 1.1.1.1 2>/dev/null | grep -oP '(?<=src\s)\d+(\.\d+){3}' || echo "")
+PRIMARY_IP=$(ip route get 1.1.1.1 2>/dev/null | grep 'src' | awk '{print $7}' || echo "")
 
 # Combine all detected IPs and remove duplicates
 ALL_IPS=$(echo -e "${IPS_HOSTNAME}\n${IPS_IP_ADDR}\n${PRIMARY_IP}" | sort -u | grep -E '^[0-9]+\.' || echo "127.0.0.1")

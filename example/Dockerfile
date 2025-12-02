@@ -153,6 +153,13 @@ COPY --from=backend-builder /build/backend/node_modules ./node_modules
 # Copy backend source code
 COPY rootfs/app/backend/src ./src
 
+# Install build tools and rebuild native modules for target architecture
+RUN apk add --no-cache python3 make g++ sqlite-dev linux-headers && \
+    npm rebuild better-sqlite3 bcrypt --build-from-source && \
+    apk del python3 make g++ linux-headers && \
+    rm -rf /var/cache/apk/* && \
+    echo "✅ Native modules rebuilt for target architecture"
+
 # Verify native modules work
 RUN node -e "require('better-sqlite3')" && \
     node -e "require('bcrypt')" && \
