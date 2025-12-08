@@ -45,7 +45,7 @@ jobs:
           echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
 
       - name: Build and push amd64 image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./example
           file: ./example/Dockerfile
